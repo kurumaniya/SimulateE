@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+apps/web/.next
+apps/web/public/emulatorjs
+apps/api/.venv
+data
+.git
+test-results
+playwright-report
+*.db
+.env

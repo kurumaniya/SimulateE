@@ -1,0 +1,34 @@
+# docker compose up -d --build
+# Data (ROMs, saves, BIOS, covers, SQLite database) lives in ./data on the host.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      APP_NAME: ${APP_NAME:-RetroWeb}
+      DATA_PATH: /data
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/retroweb.db}
+      SECRET_KEY: ${SECRET_KEY:-change-me}
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-true}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+      args:
+        API_PROXY_TARGET: http://api:8000
+        NEXT_PUBLIC_APP_NAME: ${APP_NAME:-RetroWeb}
+    environment:
+      CROSS_ORIGIN_ISOLATION: ${CROSS_ORIGIN_ISOLATION:-true}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      - api
+    restart: unless-stopped

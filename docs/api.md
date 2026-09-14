@@ -1,0 +1,65 @@
+# REST API
+
+Base path: `/api`. All responses are JSON unless noted. Errors use
+
+```json
+{ "error": { "code": "rom_missing", "message": "The ROM file for this game is missing on disk." } }
+```
+
+Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
+`invalid_filename`, `file_too_large`, `duplicate_rom`, `save_not_found`,
+`session_not_found`, `session_already_ended`, `storage_error`,
+`invalid_storage_key`.
+
+## Systems
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/systems` | All known systems: id, name, short name, extensions, `supported` (has an adapter) |
+| GET | `/systems/{system}` | One system |
+
+## Games
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/games` | List. Query: `q`, `system`, `favorite`, `sort` (`title`, `recently_played`, `recently_added`, `play_time`), `limit`, `offset` |
+| GET | `/games/{id}` | Detail incl. `play_time_seconds`, `last_played_at`, `has_auto_state`, files |
+| PATCH | `/games/{id}` | Edit metadata (title, developer, publisher, release_date, region, description) |
+| POST | `/games/{id}/favorite` | Body `{ "favorite": true }` |
+| POST | `/games/scan` | Scan the ROM directory; returns `{ added, updated, missing, skipped, errors }` |
+| POST | `/games/upload` | Multipart: `file`, `system`. Stores the ROM under `roms/<system>/` and scans it |
+| GET | `/games/{id}/rom` | ROM binary. Supports `Range`, sends `Accept-Ranges`, `ETag` (sha256), `Content-Disposition` |
+| GET | `/games/{id}/rom/{filename}` | Same as above; `filename` must equal the stored file name (used so browser caches key per game) |
+| GET | `/games/{id}/cover` | Cover image or 404 |
+| PUT | `/games/{id}/cover` | Multipart `file` (png/jpg/webp, size limited) |
+| GET | `/library/home` | Sections for the home page: `continue_playing`, `recently_played`, `recently_added`, `favorites`, `platforms` |
+
+## Saves
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/games/{id}/saves` | Query `save_type` (`battery`/`state`). Returns metadata only |
+| POST | `/games/{id}/saves` | Multipart: `file`, `save_type`, `slot`, `emulator_id`, `core_id`, `core_version`, optional `screenshot`, optional `client_modified_at`. Upserts on (game, user, type, slot) |
+| GET | `/saves/{id}` | Metadata |
+| GET | `/saves/{id}/download` | Binary |
+| GET | `/saves/{id}/screenshot` | PNG or 404 |
+| DELETE | `/saves/{id}` | Delete save and screenshot |
+
+Slot conventions: battery saves use slot `0`. Save states use `1..N` for manual
+slots and `-1` for the automatic "Resume" state written on quit.
+
+## Play sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/play-sessions` | Body `{ game_id, device?, emulator_id? }` → session. Ends any other open session of the user |
+| PATCH | `/play-sessions/{id}` | Body `{ "action": "heartbeat" }` or `{ "action": "end" }` |
+| GET | `/play-sessions/recent` | Most recent sessions with game summary |
+
+Duration is computed server-side: `min(ended_at, last_heartbeat + grace) - started_at`.
+Sessions that never received `end` are closed at their last heartbeat when a
+new session starts.
+
+## Health
+
+`GET /api/health` → `{ "status": "ok", "app": "<APP_NAME>", "version": "…" }`

@@ -1,0 +1,21 @@
+# RetroWeb API (FastAPI)
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DATA_PATH=/data \
+    DATABASE_URL=sqlite:////data/retroweb.db
+
+WORKDIR /app
+COPY apps/api/pyproject.toml ./
+COPY apps/api/retroweb ./retroweb
+COPY apps/api/alembic ./alembic
+COPY apps/api/alembic.ini ./
+RUN pip install --no-cache-dir .
+
+RUN mkdir -p /data && useradd --create-home retroweb && chown -R retroweb:retroweb /data /app
+USER retroweb
+VOLUME ["/data"]
+EXPOSE 8000
+
+CMD ["uvicorn", "retroweb.main:app", "--host", "0.0.0.0", "--port", "8000"]

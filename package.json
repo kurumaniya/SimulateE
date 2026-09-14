@@ -1,0 +1,26 @@
+{
+  "name": "retroweb-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/shared",
+    "packages/emulator-core"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "start": "npm run start --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "fetch-emulator": "node scripts/fetch-emulatorjs.mjs",
+    "e2e": "playwright test",
+    "test:api": "cd apps/api && .venv/bin/pytest",
+    "make-test-rom": "python3 scripts/make-test-rom.py"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

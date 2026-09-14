@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* Dark, game-focused palette. Tokens are exposed to Tailwind via @theme. */
+:root {
+  --bg: #08090c;
+  --bg-elevated: #101218;
+  --bg-card: #151823;
+  --bg-hover: #1c2030;
+  --border: #23283a;
+  --text: #e8eaf2;
+  --text-muted: #8b91a7;
+  --accent: #6d5df0;
+  --accent-hover: #8577ff;
+  --danger: #e5484d;
+  --success: #3dd68c;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-elevated: var(--bg-elevated);
+  --color-card: var(--bg-card);
+  --color-hover: var(--bg-hover);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+
+/* EmulatorJS renders into this box; make it fill the player area. */
+.retroweb-emulator-host,
+.retroweb-emulator-host > div {
+  width: 100%;
+  height: 100%;
+}

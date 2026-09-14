@@ -1,0 +1,36 @@
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# User data: ROMs, saves, BIOS, covers are never committed (keep the layout)
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Emulator runtime assets are fetched by scripts/fetch-emulatorjs.mjs
+apps/web/public/emulatorjs/
+
+# Test / tooling output
+test-results/
+playwright-report/
+.playwright/
+*.db
+*.db-journal
+.DS_Store
