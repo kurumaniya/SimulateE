@@ -127,6 +127,7 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
         saveSavFiles: false,
         loadSavFiles: false,
         volumeSlider: false,
+        volume: false,
         settings: true,
         gamepad: true,
       },
