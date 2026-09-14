@@ -106,7 +106,16 @@ SYSTEMS: dict[GameSystem, SystemInfo] = {
 
 # Systems the frontend currently has an adapter for. Informational: the
 # registry in packages/emulator-core is the source of truth in the browser.
-ADAPTER_SUPPORTED_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.GBA})
+ADAPTER_SUPPORTED_SYSTEMS: frozenset[GameSystem] = frozenset(
+    {
+        GameSystem.GBA,
+        GameSystem.GB,
+        GameSystem.GBC,
+        GameSystem.NES,
+        GameSystem.SNES,
+        GameSystem.GENESIS,
+    }
+)
 
 
 def system_for_folder(folder: str) -> GameSystem | None:

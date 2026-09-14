@@ -22,9 +22,18 @@ interface SystemBinding {
   coreId: string;
 }
 
-/** Systems the EmulatorJS adapter claims. Extend per phase after verifying. */
+/**
+ * Systems the EmulatorJS adapter claims, with the EmulatorJS `system` id and
+ * the libretro core it selects for it (see `getCores()` in emulator.js).
+ * Each entry is verified end to end by e2e/play-flow.spec.ts before it lands.
+ */
 const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
   [GameSystem.GBA]: { ejsSystem: "gba", coreId: "mgba" },
+  [GameSystem.GB]: { ejsSystem: "gb", coreId: "gambatte" },
+  [GameSystem.GBC]: { ejsSystem: "gb", coreId: "gambatte" },
+  [GameSystem.NES]: { ejsSystem: "nes", coreId: "fceumm" },
+  [GameSystem.SNES]: { ejsSystem: "snes", coreId: "snes9x" },
+  [GameSystem.GENESIS]: { ejsSystem: "segaMD", coreId: "genesis_plus_gx" },
 };
 
 /** Milliseconds between checks for EmulatorJS's failure flag while loading. */

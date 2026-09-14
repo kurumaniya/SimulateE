@@ -259,11 +259,14 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 * `apps/api/tests`: 48 pytest cases (detection, hashing, duplicates, path
   traversal, Range streaming, saves, sessions, uploads, enum sync with the
   TypeScript package).
-* `e2e/gba-flow.spec.ts` (Playwright): scan → library → play → quit → save on
-  server → replay restores it → resume. It uses the homebrew ROM produced by
-  `scripts/make-test-rom.py`, which increments a counter in SRAM on each boot,
-  so the assertions check real emulator output (counter 1 after the first
-  session, 2 after the second).
+* `e2e/play-flow.spec.ts` (Playwright): for every supported system, play →
+  quit → battery save on server → replay restores it; plus resume for GBA. It
+  uses the homebrew ROMs produced by `scripts/make-test-rom.py` (one per
+  system: ARM, SM83, 6502, 65816, 68000 programs that bump a counter in
+  battery RAM on boot), so the assertions check real emulator output (counter
+  1 after the first session, 2 after the second).
+* `scripts/verify-test-roms.py` runs the same programs offline on Unicorn,
+  PyBoy and py65 to catch assembly mistakes before touching a browser.
 
 ## 13. Decisions log
 

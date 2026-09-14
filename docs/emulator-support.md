@@ -12,11 +12,11 @@ wired/tested here yet, **planned** = not started.
 | System | Enum id | Extensions | Adapter | Core | Status | Known issues |
 |--------|---------|------------|---------|------|--------|--------------|
 | Game Boy Advance | `gba` | `.gba` | EmulatorJS | mGBA | **working** (Phase 1) | Threads disabled; HLE BIOS used unless a BIOS is uploaded (BIOS upload UI is planned) |
-| Game Boy | `gb` | `.gb` | EmulatorJS | Gambatte | planned (Phase 2) | |
-| Game Boy Color | `gbc` | `.gbc` | EmulatorJS | Gambatte | planned (Phase 2) | |
-| NES / Famicom | `nes` | `.nes`, `.fds`, `.unf` | EmulatorJS | FCEUmm / Nestopia | planned (Phase 2) | |
-| SNES / Super Famicom | `snes` | `.sfc`, `.smc` | EmulatorJS | Snes9x | planned (Phase 2) | |
-| Sega Genesis / Mega Drive | `genesis` | `.md`, `.gen`, `.smd`, `.bin` | EmulatorJS | Genesis Plus GX | planned (Phase 2) | `.bin` is ambiguous; header sniffing needed |
+| Game Boy | `gb` | `.gb` | EmulatorJS | Gambatte | **working** (Phase 2) | Runs without a boot ROM (Gambatte's built-in start-up); a user-supplied boot ROM is not wired yet |
+| Game Boy Color | `gbc` | `.gbc` | EmulatorJS | Gambatte | **working** (Phase 2) | Same core as GB (EmulatorJS system id `gb`) |
+| NES / Famicom | `nes` | `.nes`, `.fds`, `.unf` | EmulatorJS | FCEUmm | **working** (Phase 2) | FDS needs a user-supplied BIOS (no upload UI yet); Nestopia core is available but not wired |
+| SNES / Super Famicom | `snes` | `.sfc`, `.smc` | EmulatorJS | Snes9x | **working** (Phase 2) | |
+| Sega Genesis / Mega Drive | `genesis` | `.md`, `.gen`, `.smd`, `.bin` | EmulatorJS | Genesis Plus GX | **working** (Phase 2) | `.bin` is ambiguous; put files under `roms/genesis/` or rely on the `SEGA` header sniff. Sega CD / 32X are not registered |
 | PlayStation | `ps1` | `.cue`+`.bin`, `.chd`, `.pbp` | EmulatorJS | PCSX-ReARMed | planned (Phase 3) | Requires user-supplied BIOS; multi-file games need `GameFile` grouping |
 | Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next / ParaLLEl | planned (Phase 3) | Performance-sensitive |
 | Nintendo DS | `nds` | `.nds` | melonDS (EmulatorJS ships a melonDS core; a dedicated adapter is required for dual-screen layout & touch) | melonDS | planned (Phase 4) | Screen layouts, touch mapping |
@@ -33,12 +33,23 @@ pinned tarballs from the npm registry and lays them out as EmulatorJS expects:
 ```
 apps/web/public/emulatorjs/
   loader.js, emulator.css, src/*.js, localization/*.json, compression/*
-  cores/mgba-wasm.data
-  cores/mgba-legacy-wasm.data          (WebGL1 fallback)
-  cores/mgba-thread-wasm.data          (used when threads are enabled)
-  cores/mgba-thread-legacy-wasm.data
-  cores/reports/mgba.json              (build metadata; enables core caching)
+  cores/<core>-wasm.data               (core = mgba, gambatte, fceumm, snes9x, genesis_plus_gx)
+  cores/<core>-legacy-wasm.data        (WebGL1 fallback)
+  cores/<core>-thread-wasm.data        (used when threads are enabled)
+  cores/<core>-thread-legacy-wasm.data
+  cores/reports/<core>.json            (build metadata; enables core caching)
 ```
+
+Adapter bindings (`SYSTEM_BINDINGS` in `adapters/emulatorjs/adapter.ts`), taken
+from `getCores()` in `emulator.js`:
+
+| RetroWeb system | EmulatorJS `system` | core |
+|-----------------|---------------------|------|
+| `gba` | `gba` | `mgba` |
+| `gb`, `gbc` | `gb` | `gambatte` |
+| `nes` | `nes` | `fceumm` |
+| `snes` | `snes` | `snes9x` |
+| `genesis` | `segaMD` | `genesis_plus_gx` |
 
 Facts the adapter relies on (all read from `data/src/emulator.js`,
 `GameManager.js`, `loader.js`):
@@ -68,7 +79,7 @@ Facts the adapter relies on (all read from `data/src/emulator.js`,
   * `emulator.callEvent("exit")` flushes saves, stops the main loop, unmounts
     `/data/saves` and aborts the module after 1 s. There is no `destroy()`;
     the adapter removes the container contents afterwards.
-* Core selection: `system: "gba"` → `mgba`. Cores that need threads
+* Core selection follows the table above. Cores that need threads
   (`ppsspp`, `dosbox_pure`) fail unless `threads: true` **and**
   `SharedArrayBuffer` exists.
 * Core caching: EmulatorJS caches cores/ROMs in its own IndexedDB keyed by the
@@ -76,8 +87,8 @@ Facts the adapter relies on (all read from `data/src/emulator.js`,
   (`/api/games/{id}/rom/{filename}`) so different games never share a cache
   key.
 
-Behaviour the adapter adds on top (verified end to end by `e2e/gba-flow.spec.ts`
-with the homebrew ROM from `scripts/make-test-rom.py`):
+Behaviour the adapter adds on top (verified end to end by `e2e/play-flow.spec.ts`
+with the homebrew ROMs from `scripts/make-test-rom.py`, one per system):
 
 * **Battery save injection**: EmulatorJS only exposes the core's save path
   once content is loaded, so the game has already booted once by the time the
@@ -109,8 +120,13 @@ Known issues:
   the `visibilitychange` flush; the automatic resume state is only captured by
   Quit.
 
+Battery-save layout differs per core (all verified): mGBA, Gambatte, FCEUmm
+and Snes9x expose SRAM byte-for-byte; Genesis Plus GX stores odd-byte SRAM at
+odd indices of the `.srm`. RetroWeb never interprets the bytes, it only moves
+them, so this only matters to the test ROMs.
+
 Save-state compatibility: every state uploaded by the EmulatorJS adapter is
-tagged `emulator_id="emulatorjs"`, `core_id="mgba"`,
+tagged `emulator_id="emulatorjs"`, `core_id` (`mgba`, `gambatte`, …),
 `core_version="<emulatorjs version>"` (EmulatorJS does not expose the libretro
 core's own version string; the EmulatorJS release pins the core build).
 
@@ -122,7 +138,8 @@ menu allows remapping). RetroWeb exposes a virtual-button vocabulary in
 `packages/emulator-core/src/input.ts` so future adapters (melonDS, PPSSPP)
 share one mapping model; a RetroWeb-level remapping UI is planned.
 
-Default keyboard layout for GBA (EmulatorJS defaults):
+Default keyboard layout (EmulatorJS RetroPad defaults; SNES/Genesis add X/Y
+and L/R, C on the Genesis maps to the RetroPad A button):
 
 | Virtual | Key |
 |---------|-----|

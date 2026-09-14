@@ -14,8 +14,9 @@ Playing", click a game, and it runs — the platform picks the right emulator
 core, restores your save, tracks play time and uploads your save when you quit.
 Open it on another device and resume.
 
-## Features (Phase 1, implemented)
+## Features (implemented)
 
+- Six systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis (see below)
 - Library scanning of `data/roms/<system>/` with SHA-256 based duplicate detection
 - Home dashboard: Continue Playing, Recently Played, Recently Added, Favorites, Platforms
 - Library grid with search, platform filter, favorites filter and sorting
@@ -35,7 +36,10 @@ Open it on another device and resume.
 | System | Status |
 |--------|--------|
 | Game Boy Advance | **working** (EmulatorJS · mGBA) |
-| GB, GBC, NES, SNES, Genesis | planned (Phase 2) |
+| Game Boy / Game Boy Color | **working** (EmulatorJS · Gambatte) |
+| NES / Famicom | **working** (EmulatorJS · FCEUmm) |
+| SNES / Super Famicom | **working** (EmulatorJS · Snes9x) |
+| Sega Genesis / Mega Drive | **working** (EmulatorJS · Genesis Plus GX) |
 | PlayStation, Nintendo 64 | planned (Phase 3) |
 | Nintendo DS | planned (Phase 4, melonDS) |
 | PSP | planned (Phase 5, PPSSPP) |
@@ -109,8 +113,8 @@ npm run lint && npm run typecheck && npm run build
 End-to-end test (needs both dev servers running and Chromium via Playwright):
 
 ```bash
-npm run make-test-rom     # writes a tiny homebrew GBA ROM into data/roms/gba/
-npm run e2e               # scan → play → save → quit → resume, asserting real SRAM output
+npm run make-test-rom     # writes a tiny homebrew ROM for each system into data/roms/<system>/
+npm run e2e               # per system: play → save → quit → replay restores it; GBA also checks resume
 ```
 
 The API creates the SQLite database and runs Alembic migrations on startup.
@@ -161,7 +165,7 @@ can use `SharedArrayBuffer`. If you place nginx / Caddy / Traefik in front,
 proxy both the pages and `/api` through the **same origin** and keep those
 headers. Configuration is done through `.env` (see `.env.example`).
 
-## Known limitations (Phase 1)
+## Known limitations
 
 - Single implicit user; no login yet (the `User` model and dependency are in place).
 - Library scan runs synchronously inside the request.
@@ -170,7 +174,7 @@ headers. Configuration is done through `.env` (see `.env.example`).
   automatic resume point is only captured by Quit.
 - Controller remapping uses EmulatorJS's built-in *Control Settings* menu
   (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
-- BIOS upload has no UI yet (not needed for GBA).
+- BIOS upload has no UI yet (none of the current systems need one; FDS and GB boot ROMs are not wired).
 - Mobile works but is not optimised; virtual on-screen controls are planned.
 
 ## Legal notice
@@ -185,8 +189,8 @@ see their repositories.
 
 ## Roadmap
 
-1. **Phase 1 — GBA end to end** (this release)
-2. Phase 2 — GB, GBC, NES, SNES, Genesis via EmulatorJS
+1. ~~Phase 1 — GBA end to end~~ done
+2. ~~Phase 2 — GB, GBC, NES, SNES, Genesis via EmulatorJS~~ done
 3. Phase 3 — PlayStation (BIOS upload), Nintendo 64
 4. Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)
 5. Phase 5 — PSP (PPSSPP, threads)
