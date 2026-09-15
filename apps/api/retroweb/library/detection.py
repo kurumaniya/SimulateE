@@ -13,6 +13,7 @@ from retroweb.library.systems import (
 )
 
 HEADER_BYTES = 0x200
+CD_SYNC = b"\x00" + b"\xff" * 10 + b"\x00"
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,9 @@ def _sniff_header(header: bytes, candidates: list[GameSystem]) -> GameSystem | N
         ):
             return system
         if system is GameSystem.GENESIS and header[0x100:0x104] in (b"SEGA", b" SEG"):
+            return system
+        if system is GameSystem.PS1 and header[:12] == CD_SYNC:
+            # Raw 2352-byte CD sector: a disc image track, not a cartridge dump.
             return system
     return None
 

@@ -81,14 +81,16 @@ SYSTEMS: dict[GameSystem, SystemInfo] = {
         (".z64", ".n64", ".v64"),
         ("n64",),
     ),
+    # Extensions are the ones PCSX-ReARMed accepts in EmulatorJS (core.json);
+    # .chd and .iso are deliberately absent because that build cannot open them.
     GameSystem.PS1: SystemInfo(
         GameSystem.PS1,
         "PlayStation",
         "PS1",
         "Sony",
-        (".cue", ".chd", ".pbp", ".bin", ".iso"),
+        (".cue", ".pbp", ".m3u", ".ccd", ".img", ".bin"),
         ("ps1", "psx", "playstation"),
-        ambiguous_extensions=(".bin", ".iso"),
+        ambiguous_extensions=(".bin",),
     ),
     GameSystem.PSP: SystemInfo(
         GameSystem.PSP,
@@ -114,6 +116,8 @@ ADAPTER_SUPPORTED_SYSTEMS: frozenset[GameSystem] = frozenset(
         GameSystem.NES,
         GameSystem.SNES,
         GameSystem.GENESIS,
+        GameSystem.PS1,
+        GameSystem.N64,
     }
 )
 
@@ -133,6 +137,10 @@ def systems_for_extension(extension: str) -> list[GameSystem]:
 
 def is_extension_valid_for(system: GameSystem, extension: str) -> bool:
     return extension.lower() in SYSTEMS[system].extensions
+
+
+# Files that describe other files rather than containing game data themselves.
+CONTAINER_EXTENSIONS: frozenset[str] = frozenset({".cue"})
 
 
 def all_extensions() -> frozenset[str]:

@@ -34,6 +34,8 @@ const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
   [GameSystem.NES]: { ejsSystem: "nes", coreId: "fceumm" },
   [GameSystem.SNES]: { ejsSystem: "snes", coreId: "snes9x" },
   [GameSystem.GENESIS]: { ejsSystem: "segaMD", coreId: "genesis_plus_gx" },
+  [GameSystem.PS1]: { ejsSystem: "psx", coreId: "pcsx_rearmed" },
+  [GameSystem.N64]: { ejsSystem: "n64", coreId: "mupen64plus_next" },
 };
 
 /** Milliseconds between checks for EmulatorJS's failure flag while loading. */
@@ -142,6 +144,16 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       },
       capture: { photo: { source: "canvas", format: "png", upscale: 1 } },
     };
+    const preferredCore = config.adapterOptions?.retroarchCore;
+    if (typeof preferredCore === "string" && preferredCore) {
+      // Lets a system run on an alternative libretro core (e.g. ParaLLEl-N64
+      // instead of Mupen64Plus-Next). EmulatorJS validates it against its list.
+      ejsConfig.defaultOptions = { retroarch_core: preferredCore };
+    }
+    // Companion files (cue tracks) must sit next to the primary file under
+    // their exact names before RetroArch opens the content. They are fetched
+    // up front and written synchronously once EmulatorJS has mounted its FS.
+    const companions = await this.fetchCompanions(game.companionFiles ?? []);
 
     const ready = new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -149,6 +161,13 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       this.emulator = emulator;
       // Expose the instance on its mount for debugging tools and e2e tests.
       (mount as HTMLElement & { __emulatorjs?: EjsInstance }).__emulatorjs = emulator;
+      emulator.on("saveDatabaseLoaded", (fs) => {
+        try {
+          writeCompanionFiles(fs as EjsFileSystem, companions);
+        } catch (error) {
+          console.error("failed to write companion files", error);
+        }
+      });
       emulator.on("ready", () => {
         if (settled) return;
         settled = true;
@@ -371,6 +390,35 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
     return new EmulatorError("emulator_failed", text || "The emulator failed to start.");
   }
 
+  private async fetchCompanions(
+    files: { filename: string; url: string }[],
+  ): Promise<{ filename: string; data: Uint8Array }[]> {
+    return Promise.all(
+      files.map(async (file) => {
+        let response: Response;
+        try {
+          response = await fetch(file.url, { credentials: "same-origin" });
+        } catch (error) {
+          throw new EmulatorError(
+            "rom_download_failed",
+            `Could not download ${file.filename}.`,
+            error,
+          );
+        }
+        if (response.status === 404) {
+          throw new EmulatorError("rom_missing", `${file.filename} is missing on the server.`);
+        }
+        if (!response.ok) {
+          throw new EmulatorError(
+            "rom_download_failed",
+            `The server refused ${file.filename} (HTTP ${response.status}).`,
+          );
+        }
+        return { filename: file.filename, data: new Uint8Array(await response.arrayBuffer()) };
+      }),
+    );
+  }
+
   private async assertRomReachable(romUrl: string): Promise<void> {
     let response: Response;
     try {
@@ -387,6 +435,17 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
         `The server refused the ROM download (HTTP ${response.status}).`,
       );
     }
+  }
+}
+
+function writeCompanionFiles(
+  fs: EjsFileSystem,
+  companions: { filename: string; data: Uint8Array }[],
+): void {
+  for (const companion of companions) {
+    const path = `/${companion.filename}`;
+    if (fs.analyzePath(path).exists) fs.unlink(path);
+    fs.writeFile(path, companion.data);
   }
 }
 

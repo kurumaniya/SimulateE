@@ -1,5 +1,7 @@
 import type {
   GameDetail,
+  GameFile,
+  SystemBiosOut,
   GameListQuery,
   GameListResponse,
   GameSystem,
@@ -13,7 +15,7 @@ import type {
   ScanResult,
   SystemOut,
 } from "@retroweb/shared";
-import { buildUrl, rawRequest, request } from "./client";
+import { ApiError, buildUrl, rawRequest, request } from "./client";
 
 export const gamesApi = {
   list: (query: GameListQuery = {}) =>
@@ -42,6 +44,10 @@ export const gamesApi = {
     game.has_cover
       ? buildUrl(`/games/${encodeURIComponent(game.id)}/cover`, { v: game.updated_at })
       : null,
+  fileUrl: (game: GameDetail, file: GameFile) =>
+    buildUrl(
+      `/games/${encodeURIComponent(game.id)}/files/${encodeURIComponent(file.id)}/${encodeURIComponent(file.filename)}`,
+    ),
   /** ROM URL ends with the file name so browser caches key it per game. */
   romUrl: (game: GameDetail) =>
     game.rom_filename
@@ -99,4 +105,25 @@ export const sessionsApi = {
       json: { action: "end" },
     }),
   recent: (limit = 20) => request<RecentSessionOut[]>("/play-sessions/recent", { query: { limit } }),
+};
+
+export const biosApi = {
+  list: () => request<SystemBiosOut[]>("/bios"),
+  forSystem: async (system: GameSystem): Promise<SystemBiosOut | null> => {
+    try {
+      return await request<SystemBiosOut>(`/bios/${system}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  },
+  upload: (system: GameSystem, file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<SystemBiosOut>(`/bios/${system}`, { method: "POST", body });
+  },
+  remove: (system: GameSystem, filename: string) =>
+    request<void>(`/bios/${system}/${encodeURIComponent(filename)}`, { method: "DELETE" }),
+  fileUrl: (system: GameSystem, filename: string) =>
+    buildUrl(`/bios/${system}/${encodeURIComponent(filename)}`),
 };

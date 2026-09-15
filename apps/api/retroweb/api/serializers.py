@@ -13,7 +13,6 @@ from retroweb.services.games import GameListItem
 
 def game_summary(item: GameListItem) -> GameSummary:
     game = item.game
-    primary = game.primary_file
     return GameSummary(
         id=game.id,
         title=game.title,
@@ -21,7 +20,7 @@ def game_summary(item: GameListItem) -> GameSummary:
         favorite=game.favorite,
         region=game.region,
         has_cover=game.cover_key is not None,
-        rom_missing=primary is None or primary.missing,
+        rom_missing=game.any_file_missing,
         play_time_seconds=item.play_time_seconds,
         last_played_at=item.last_played_at,
         has_auto_state=item.has_auto_state,

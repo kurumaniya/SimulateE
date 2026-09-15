@@ -17,8 +17,8 @@ wired/tested here yet, **planned** = not started.
 | NES / Famicom | `nes` | `.nes`, `.fds`, `.unf` | EmulatorJS | FCEUmm | **working** (Phase 2) | FDS needs a user-supplied BIOS (no upload UI yet); Nestopia core is available but not wired |
 | SNES / Super Famicom | `snes` | `.sfc`, `.smc` | EmulatorJS | Snes9x | **working** (Phase 2) | |
 | Sega Genesis / Mega Drive | `genesis` | `.md`, `.gen`, `.smd`, `.bin` | EmulatorJS | Genesis Plus GX | **working** (Phase 2) | `.bin` is ambiguous; put files under `roms/genesis/` or rely on the `SEGA` header sniff. Sega CD / 32X are not registered |
-| PlayStation | `ps1` | `.cue`+`.bin`, `.chd`, `.pbp` | EmulatorJS | PCSX-ReARMed | planned (Phase 3) | Requires user-supplied BIOS; multi-file games need `GameFile` grouping |
-| Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next / ParaLLEl | planned (Phase 3) | Performance-sensitive |
+| PlayStation | `ps1` | `.cue`+`.bin`/`.img`, `.pbp`, `.m3u`, `.ccd` | EmulatorJS | PCSX-ReARMed | **working** (Phase 3) | The EmulatorJS build of PCSX-ReARMed does not accept `.chd`, `.iso` or `.exe`. Runs without a BIOS through HLE; upload one in Settings for full compatibility. Multi-disc (`.m3u`) is not grouped by the scanner yet |
+| Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next (GLideN64, WebGL2); ParaLLEl-N64 available via `adapterOptions.retroarchCore` | **working** (Phase 3) | Needs WebGL2. Slow without GPU acceleration (headless CI runs at a few fps) |
 | Nintendo DS | `nds` | `.nds` | melonDS (EmulatorJS ships a melonDS core; a dedicated adapter is required for dual-screen layout & touch) | melonDS | planned (Phase 4) | Screen layouts, touch mapping |
 | PSP | `psp` | `.iso`, `.cso`, `.pbp` | PPSSPP (EmulatorJS ships a PPSSPP core that **requires threads + WebGL2**) | PPSSPP | planned (Phase 5) | Needs COOP/COEP (already served), large ISOs need Range streaming (already implemented) |
 
@@ -33,7 +33,8 @@ pinned tarballs from the npm registry and lays them out as EmulatorJS expects:
 ```
 apps/web/public/emulatorjs/
   loader.js, emulator.css, src/*.js, localization/*.json, compression/*
-  cores/<core>-wasm.data               (core = mgba, gambatte, fceumm, snes9x, genesis_plus_gx)
+  cores/<core>-wasm.data               (mgba, gambatte, fceumm, snes9x, genesis_plus_gx,
+                                        pcsx_rearmed, mupen64plus_next, parallel_n64)
   cores/<core>-legacy-wasm.data        (WebGL1 fallback)
   cores/<core>-thread-wasm.data        (used when threads are enabled)
   cores/<core>-thread-legacy-wasm.data
@@ -50,6 +51,8 @@ from `getCores()` in `emulator.js`:
 | `nes` | `nes` | `fceumm` |
 | `snes` | `snes` | `snes9x` |
 | `genesis` | `segaMD` | `genesis_plus_gx` |
+| `ps1` | `psx` | `pcsx_rearmed` |
+| `n64` | `n64` | `mupen64plus_next` (`parallel_n64` on request) |
 
 Facts the adapter relies on (all read from `data/src/emulator.js`,
 `GameManager.js`, `loader.js`):
@@ -103,6 +106,22 @@ with the homebrew ROMs from `scripts/make-test-rom.py`, one per system):
   equivalent yet. Both bars auto-hide; move the mouse or press Escape.
 * The EmulatorJS instance is attached to its mount element as `__emulatorjs`
   for debugging and tests.
+* **BIOS**: `GameLaunchData.biosUrl` is passed as EmulatorJS `biosUrl`;
+  EmulatorJS downloads it and writes it next to the content at `/` (its
+  RetroArch build reports `SYSTEM_DIRECTORY: "/"`), which is where
+  PCSX-ReARMed looks. The URL's last segment must be the canonical BIOS file
+  name, which `/api/bios/{system}/{filename}` guarantees.
+* **Companion files** (`.cue` + `.bin` tracks): EmulatorJS's `externalFiles`
+  option is *not* used. In 4.2.3 it calls `FS.writeFile(path, ArrayBuffer)` for
+  explicit paths, which Emscripten rejects after creating the node, leaving an
+  empty file (the warning only shows with `EJS_DEBUG_XX`). The adapter fetches
+  the companions itself and writes them on the `saveDatabaseLoaded` event,
+  before RetroArch opens the content. The cue is stored by EmulatorJS under its
+  URL-encoded name; its `FILE` lines reference the real names, which is what
+  the adapter writes.
+* **Alternative cores**: `adapterOptions.retroarchCore` becomes EmulatorJS
+  `defaultOptions.retroarch_core` (e.g. `parallel_n64`). There is no UI for
+  it yet.
 
 Known issues:
 
@@ -119,11 +138,29 @@ Known issues:
 * Closing the tab without pressing Quit relies on the periodic sync (60 s) and
   the `visibilitychange` flush; the automatic resume state is only captured by
   Quit.
+* Mupen64Plus-Next blocks the main thread while it waits for the game to
+  present a frame: a program that never changes `VI_ORIGIN` freezes the page.
+  Real games always swap buffers, but keep it in mind for homebrew.
 
 Battery-save layout differs per core (all verified): mGBA, Gambatte, FCEUmm
 and Snes9x expose SRAM byte-for-byte; Genesis Plus GX stores odd-byte SRAM at
-odd indices of the `.srm`. RetroWeb never interprets the bytes, it only moves
-them, so this only matters to the test ROMs.
+odd indices of the `.srm`; PCSX-ReARMed's `.srm` is memory card 1 (128 KiB);
+Mupen64Plus-Next's `.srm` bundles EEPROM, mempaks, SRAM and FlashRAM
+(290 KiB). RetroWeb never interprets the bytes, it only moves them, so this
+only matters to the test ROMs. For PS1 and N64 the e2e test plants a marker in
+the save the core produced and checks it survives server → emulator → server.
+
+### Test ROM notes (PS1 / N64)
+
+* The PS1 test is a real MODE2/2352 disc image with an ISO9660 file system,
+  `SYSTEM.CNF` and a PS-X EXE, plus its cue sheet. EDC/ECC fields are zero;
+  the emulator does not verify them.
+* The N64 test boots through a 64-byte emulator-only IPL3 stub
+  (`scripts/test-programs/ipl3.S`). libdragon's public-domain IPL3 was tried
+  first, but on the Mupen64Plus build EmulatorJS ships its RDRAM detection
+  reports 64 MB and the boot crashes into an exception loop at `0x80000300`.
+  The stub relies on the emulator's HLE PIF boot, so the ROM is not valid for
+  real hardware.
 
 Save-state compatibility: every state uploaded by the EmulatorJS adapter is
 tagged `emulator_id="emulatorjs"`, `core_id` (`mgba`, `gambatte`, …),

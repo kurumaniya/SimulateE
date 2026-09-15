@@ -32,6 +32,7 @@ export interface GameFile {
   region: string | null;
   label: string | null;
   is_primary: boolean;
+  role: "primary" | "companion";
   missing: boolean;
 }
 
@@ -166,4 +167,24 @@ export interface HealthResponse {
   status: string;
   app: string;
   version: string;
+}
+
+export interface BiosFileOut {
+  filename: string;
+  description: string;
+  known_md5: string | null;
+  installed: boolean;
+  size_bytes: number | null;
+  sha256: string | null;
+  md5: string | null;
+  verified: boolean | null;
+}
+
+export interface SystemBiosOut {
+  system: GameSystem;
+  note: string;
+  optional: boolean;
+  ready: boolean;
+  preferred_file: string | null;
+  files: BiosFileOut[];
 }

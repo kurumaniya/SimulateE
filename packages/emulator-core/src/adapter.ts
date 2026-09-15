@@ -25,6 +25,11 @@ export interface GameLaunchData {
   romFilename: string;
   /** Same-origin URL of a user-supplied BIOS, when the system needs one. */
   biosUrl?: string;
+  /**
+   * Other files the primary one references (cue tracks, discs). Each is
+   * written next to the primary file under its own name before start.
+   */
+  companionFiles?: { filename: string; url: string }[];
 }
 
 export type EmulatorEvent = "ready" | "started" | "exited" | "error";

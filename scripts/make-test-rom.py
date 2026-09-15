@@ -17,10 +17,17 @@ Where the counter lives in the battery save file (index into the .sav/.srm):
     nes      byte 0      (magic at 1-4)
     snes     byte 0      (magic at 1-4)
     genesis  byte 1      (odd-byte SRAM; magic at 3,5,7,9)
+    ps1      (no in-game write: the program only paints the screen; the e2e
+              test injects bytes into the memory card and checks they survive)
+    n64      (same: paints the screen; save round-trip checked by injection)
 
 The 6502/65816 programs were assembled with ca65 (sources in the docstrings
 below); the ARM, SM83 and 68000 programs are hand-assembled and verified with
-Unicorn/PyBoy in scripts/verify-test-roms.py.
+Unicorn/PyBoy in scripts/verify-test-roms.py. The PS1 and N64 programs are C
+compiled with mipsel-/mips-linux-gnu-gcc (sources in scripts/test-programs/).
+The N64 ROM boots through a 64-byte emulator-only IPL3 stub (ipl3.S); the
+libdragon IPL3 was tried first but its RDRAM detection crashes on the
+Mupen64Plus build EmulatorJS ships.
 """
 
 from __future__ import annotations
@@ -288,6 +295,145 @@ def build_genesis() -> bytes:
     return bytes(rom)
 
 
+# ---------------------------------------------------------------------------
+# PlayStation: a MODE2/2352 disc image (ISO9660) holding SYSTEM.CNF and a
+# PS-X EXE built from scripts/test-programs/ps1.c, plus its cue sheet.
+# ---------------------------------------------------------------------------
+PS1_PROGRAM = bytes.fromhex(
+    "801f023c141840ac0008033c01006324141843acc606033c60026324141843ac0407033c"
+    "10006324141843ac0005033c141843ac00e1033c101843ac00e3033c101843ac03e4033c"
+    "3fbd6334101843ac00e5033c101843ac0002033c40ff6334101843ac101840acf000033c"
+    "40016324101843ac0003033c141843acffff001000000000000000000000000000000000"
+)
+PS1_LOAD_ADDRESS = 0x80010000
+CD_SECTOR = 2048
+
+
+def _both_endian32(value: int) -> bytes:
+    return struct.pack("<I", value) + struct.pack(">I", value)
+
+
+def _both_endian16(value: int) -> bytes:
+    return struct.pack("<H", value) + struct.pack(">H", value)
+
+
+def _iso_dir_record(name: bytes, lba: int, size: int, flags: int) -> bytes:
+    rec = bytearray(b"\0\0")
+    rec += _both_endian32(lba) + _both_endian32(size)
+    rec += bytes([126, 1, 1, 0, 0, 0, 0])  # recording date 2026-01-01
+    rec += bytes([flags, 0, 0]) + _both_endian16(1)
+    rec += bytes([len(name)]) + name
+    if len(rec) % 2:
+        rec += b"\0"
+    rec[0] = len(rec)
+    return bytes(rec)
+
+
+def _psx_exe(program: bytes) -> bytes:
+    header = bytearray(CD_SECTOR)
+    header[0:8] = b"PS-X EXE"
+    text_size = (len(program) + CD_SECTOR - 1) // CD_SECTOR * CD_SECTOR
+    struct.pack_into("<I", header, 0x10, PS1_LOAD_ADDRESS)  # initial PC
+    struct.pack_into("<I", header, 0x18, PS1_LOAD_ADDRESS)  # text address
+    struct.pack_into("<I", header, 0x1C, text_size)
+    struct.pack_into("<I", header, 0x30, 0x801FFFF0)  # initial SP
+    header[0x4C:0x4C + 32] = b"RetroWeb homebrew test program  "
+    return bytes(header) + program.ljust(text_size, b"\0")
+
+
+def build_ps1_disc() -> bytes:
+    exe = _psx_exe(PS1_PROGRAM)
+    cnf = b"BOOT = cdrom:\\MAIN.EXE;1\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFFF0\r\n"
+    root_lba, cnf_lba, exe_lba = 20, 21, 22
+    total = exe_lba + len(exe) // CD_SECTOR + 1
+    root = (
+        _iso_dir_record(b"\0", root_lba, CD_SECTOR, 2)
+        + _iso_dir_record(b"\1", root_lba, CD_SECTOR, 2)
+        + _iso_dir_record(b"MAIN.EXE;1", exe_lba, len(exe), 0)
+        + _iso_dir_record(b"SYSTEM.CNF;1", cnf_lba, len(cnf), 0)
+    )
+    pvd = bytearray(CD_SECTOR)
+    pvd[0] = 1
+    pvd[1:6] = b"CD001"
+    pvd[6] = 1
+    pvd[8:40] = b"PLAYSTATION".ljust(32)
+    pvd[40:72] = b"RETROWEB".ljust(32)
+    pvd[80:88] = _both_endian32(total)
+    pvd[120:124] = _both_endian16(1)
+    pvd[124:128] = _both_endian16(1)
+    pvd[128:132] = _both_endian16(CD_SECTOR)
+    pvd[132:140] = _both_endian32(10)
+    struct.pack_into("<I", pvd, 140, 18)
+    struct.pack_into(">I", pvd, 148, 19)
+    root_record = _iso_dir_record(b"\0", root_lba, CD_SECTOR, 2)
+    pvd[156 : 156 + len(root_record)] = root_record
+    pvd[190:318] = b"RETROWEB".ljust(128)
+    path_l = bytes([1, 0]) + struct.pack("<I", root_lba) + struct.pack("<H", 1) + b"\0\0"
+    path_m = bytes([1, 0]) + struct.pack(">I", root_lba) + struct.pack(">H", 1) + b"\0\0"
+    terminator = bytes([255]) + b"CD001" + bytes([1])
+    sectors: dict[int, bytes] = {
+        16: bytes(pvd),
+        17: terminator,
+        18: path_l,
+        19: path_m,
+        root_lba: root,
+        cnf_lba: cnf,
+    }
+    for offset in range(0, len(exe), CD_SECTOR):
+        sectors[exe_lba + offset // CD_SECTOR] = exe[offset : offset + CD_SECTOR]
+
+    def bcd(value: int) -> int:
+        return ((value // 10) << 4) | (value % 10)
+
+    image = bytearray()
+    for lba in range(total):
+        data = sectors.get(lba, b"").ljust(CD_SECTOR, b"\0")
+        frames = lba + 150  # two-second pregap
+        msf = bytes([bcd(frames // 4500), bcd((frames // 75) % 60), bcd(frames % 75), 2])
+        subheader = bytes([0, 0, 8, 0, 0, 0, 8, 0])  # mode 2 form 1, data
+        # EDC/ECC left zero: emulators do not verify them.
+        image += b"\x00" + b"\xff" * 10 + b"\x00" + msf + subheader + data + bytes(280)
+    return bytes(image)
+
+
+def build_ps1_cue(bin_name: str) -> bytes:
+    return f'FILE "{bin_name}" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n'.encode()
+
+
+# ---------------------------------------------------------------------------
+# Nintendo 64. The cartridge boot code (IPL3) is a 64-byte emulator-only stub
+# assembled from scripts/test-programs/ipl3.S: it copies the program from ROM
+# offset 0x1000 to RDRAM 0x80000400 and jumps there. It relies on the
+# emulator's HLE PIF boot (no RDRAM init, no CIC), so it is not a real
+# console boot loader. Program built from scripts/test-programs/n64.c.
+# ---------------------------------------------------------------------------
+N64_IPL3_STUB = bytes.fromhex(
+    "3c08b000350810003c09a00035290400240a10008d0b0000ad2b00002508000425290004254affff1540fffa000000003c0c8000358c04000180000800000000"
+)
+N64_PROGRAM = bytes.fromhex(
+    "3c02a010240407c13c03a01224635800a4440000244200021443fffd000000003c02a013"
+    "240407c13c03a01524635800a4440000244200021443fffd000000003c02a4403c030010"
+    "ac43000424030140ac43000824030002ac43000c3c0303e524632239ac4300142403020d"
+    "ac43001824030c15ac43001c3c030c1524630c15ac4300203c03006c246302ecac430024"
+    "3c030025246301ffac4300283c03000e24630204ac43002c24030200ac43003024030400"
+    "ac43003424033202ac4300008c430010000028253c04a4402406fffe240700013c090010"
+    "100000053c08001301202825ac85000400602825004018258c820010004610240043182b"
+    "5060fffc0040182510a7fff638a300011000fff501002825000000000000000000000000"
+)
+N64_ENTRY = 0x80000400
+
+
+def build_n64() -> bytes:
+    rom = bytearray(1024 * 1024)
+    # PI BSD config, clock rate, entry point, release; CRCs left zero (HLE boot).
+    struct.pack_into(">IIII", rom, 0, 0x80371240, 0x0000000F, N64_ENTRY, 0x00001444)
+    rom[0x40 : 0x40 + len(N64_IPL3_STUB)] = N64_IPL3_STUB
+    rom[0x20:0x34] = b"RETROWEB TEST".ljust(20)
+    rom[0x3B:0x3F] = b"NRWE"  # media 'N', id 'RW', region 'E'
+    rom[0x1000 : 0x1000 + len(N64_PROGRAM)] = N64_PROGRAM
+    return bytes(rom)
+
+
 BUILDERS = {
     "gba": ("RetroWeb Test (World).gba", build_gba),
     "gb": ("RetroWeb Test (World).gb", lambda: build_gb(color=False)),
@@ -295,7 +441,11 @@ BUILDERS = {
     "nes": ("RetroWeb Test (World).nes", build_nes),
     "snes": ("RetroWeb Test (World).sfc", build_snes),
     "genesis": ("RetroWeb Test (World).md", build_genesis),
+    "ps1": ("RetroWeb Test (World).cue", lambda: build_ps1_cue("RetroWeb Test (World).bin")),
+    "n64": ("RetroWeb Test (World).z64", build_n64),
 }
+# Extra files written next to the primary one.
+COMPANIONS = {"ps1": ("RetroWeb Test (World).bin", build_ps1_disc)}
 
 
 def main() -> None:
@@ -308,6 +458,12 @@ def main() -> None:
         data = builder()
         target.write_bytes(data)
         print(f"wrote {target} ({len(data)} bytes)")
+        if system in COMPANIONS:
+            companion_name, companion_builder = COMPANIONS[system]
+            companion = root / system / companion_name
+            companion_data = companion_builder()
+            companion.write_bytes(companion_data)
+            print(f"wrote {companion} ({len(companion_data)} bytes)")
 
 
 if __name__ == "__main__":

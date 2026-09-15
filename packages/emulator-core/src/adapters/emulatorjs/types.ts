@@ -65,7 +65,15 @@ export interface EjsConfig {
   noAutoFocus?: boolean;
   buttonOpts?: Record<string, boolean>;
   capture?: { photo?: { source?: string; format?: string; upscale?: number } };
+  /**
+   * Absolute path inside the emulator FS → URL. Not used by the adapter:
+   * in 4.2.3 explicit paths are written with an ArrayBuffer, which Emscripten
+   * rejects, leaving an empty file. See `writeCompanionFiles`.
+   */
+  externalFiles?: Record<string, string>;
   langJson?: Record<string, string>;
+  /** Initial values for EmulatorJS settings (e.g. `retroarch_core`). */
+  defaultOptions?: Record<string, string>;
 }
 
 export type EjsConstructor = new (selector: string, config: EjsConfig) => EjsInstance;

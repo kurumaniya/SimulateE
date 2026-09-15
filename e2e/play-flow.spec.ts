@@ -23,6 +23,16 @@ const SYSTEMS: SystemCase[] = [
   { system: "genesis", counterIndex: 1 },
 ];
 
+/**
+ * Systems whose test program does not write its save: the round-trip is
+ * checked by injecting bytes into the save the emulator produced and
+ * verifying they come back unchanged after another session.
+ */
+const INJECTION_SYSTEMS: { system: string; probeOffset: number }[] = [
+  { system: "ps1", probeOffset: 0x2080 }, // inside memory card block 1
+  { system: "n64", probeOffset: 0x100 }, // inside the EEPROM area
+];
+
 async function batterySaveByte(request: Page["request"], gameId: string, index: number) {
   const saves = await (await request.get(`${API}/api/games/${gameId}/saves?save_type=battery`)).json();
   if (!Array.isArray(saves) || saves.length === 0) return null;
@@ -86,6 +96,43 @@ for (const { system, counterIndex } of SYSTEMS) {
 
     await playAndQuit(page, gameId);
     expect(await batterySaveByte(request, gameId, counterIndex)).toBe(2);
+  });
+}
+
+for (const { system, probeOffset } of INJECTION_SYSTEMS) {
+  test(`${system}: boots, and an uploaded save is restored into the emulator`, async ({
+    page,
+    request,
+  }) => {
+    const gameId = await findTestGame(request, system);
+    await page.addInitScript(() => indexedDB.deleteDatabase("retroweb"));
+
+    // First session: the emulator writes whatever save file the core keeps.
+    await playAndQuit(page, gameId);
+    const saves = await (await request.get(`${API}/api/games/${gameId}/saves?save_type=battery`)).json();
+    expect(saves.length, "core should produce a battery save").toBe(1);
+    const original = Buffer.from(await (await request.get(`${API}/api/saves/${saves[0].id}/download`)).body());
+    expect(original.length).toBeGreaterThan(probeOffset + 4);
+
+    // Plant a marker on the server and play again: it must survive the trip
+    // server → emulator → server.
+    const marked = Buffer.from(original);
+    marked.writeUInt32BE(0x52574542, probeOffset); // "RWEB"
+    const upload = await request.post(`${API}/api/games/${gameId}/saves`, {
+      multipart: {
+        file: { name: "battery.sav", mimeType: "application/octet-stream", buffer: marked },
+        save_type: "battery",
+        slot: "0",
+        emulator_id: "e2e",
+        client_modified_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+    });
+    expect(upload.ok(), await upload.text()).toBeTruthy();
+
+    await playAndQuit(page, gameId);
+    const after = Buffer.from(await (await request.get(`${API}/api/saves/${saves[0].id}/download`)).body());
+    expect(after.length).toBe(original.length);
+    expect(after.readUInt32BE(probeOffset)).toBe(0x52574542);
   });
 }
 

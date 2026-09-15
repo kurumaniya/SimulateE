@@ -24,6 +24,7 @@ from retroweb.core.errors import (
 from retroweb.core.logging import get_logger
 from retroweb.library.filenames import sanitize_filename, split_extension
 from retroweb.library.systems import GameSystem, is_extension_valid_for
+from retroweb.models import GameFile
 from retroweb.schemas.games import (
     FavoriteRequest,
     GameDetail,
@@ -125,16 +126,14 @@ def set_favorite(game_id: str, payload: FavoriteRequest, db: DbDep, user: UserDe
     return game_detail(game_service.get_game_item(db, user, game_id))
 
 
-def _rom_response(
+def _file_response(
     game_id: str,
-    db: DbDep,
+    game_file: GameFile | None,
     storage: StorageDep,
     range_header: str | None,
     if_none_match: str | None,
     head: bool,
 ) -> Response:
-    game = game_service.get_game(db, game_id)
-    game_file = game.primary_file
     if game_file is None or not storage.exists(game_file.storage_key):
         raise RomMissingError()
     total = storage.size(game_file.storage_key)
@@ -161,7 +160,9 @@ def _rom_response(
         headers["Content-Range"] = f"bytes {start}-{end}/{total}"
         headers["Content-Length"] = str(byte_range.length)
 
-    log.info("rom.serve", game_id=game_id, status=status, start=start, end=end)
+    log.info(
+        "rom.serve", game_id=game_id, file_id=game_file.id, status=status, start=start, end=end
+    )
     if head or total == 0:
         return Response(status_code=status, headers=headers, media_type="application/octet-stream")
 
@@ -183,8 +184,9 @@ def download_rom(
     range_header: Annotated[str | None, Header(alias="Range")] = None,
     if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
-    return _rom_response(
-        game_id, db, storage, range_header, if_none_match, head=request.method == "HEAD"
+    game = game_service.get_game(db, game_id)
+    return _file_response(
+        game_id, game.primary_file, storage, range_header, if_none_match, request.method == "HEAD"
     )
 
 
@@ -208,8 +210,30 @@ def download_rom_named(
     game_file = game.primary_file
     if game_file is None or game_file.filename != filename:
         raise NotFoundError("Unknown ROM file name for this game")
-    return _rom_response(
-        game_id, db, storage, range_header, if_none_match, head=request.method == "HEAD"
+    return _file_response(
+        game_id, game_file, storage, range_header, if_none_match, request.method == "HEAD"
+    )
+
+
+@router.api_route("/{game_id}/files/{file_id}/{filename}", methods=["GET", "HEAD"])
+def download_game_file(
+    game_id: str,
+    file_id: str,
+    filename: str,
+    request: Request,
+    db: DbDep,
+    storage: StorageDep,
+    _user: UserDep,
+    range_header: Annotated[str | None, Header(alias="Range")] = None,
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
+) -> Response:
+    """Any file of a multi-file game (cue tracks, discs). Located by id, never by name."""
+    game = game_service.get_game(db, game_id)
+    game_file = next((f for f in game.files if f.id == file_id), None)
+    if game_file is None or game_file.filename != filename:
+        raise NotFoundError("Unknown file for this game")
+    return _file_response(
+        game_id, game_file, storage, range_header, if_none_match, request.method == "HEAD"
     )
 
 

@@ -41,6 +41,20 @@ class Game(IdMixin, TimestampMixin, Base):
                 return file
         return self.files[0] if self.files else None
 
+    @property
+    def companion_files(self) -> list[GameFile]:
+        return [file for file in self.files if file.role == FILE_ROLE_COMPANION]
+
+    @property
+    def any_file_missing(self) -> bool:
+        primary = self.primary_file
+        return primary is None or primary.missing or any(f.missing for f in self.companion_files)
+
+
+FILE_ROLE_PRIMARY = "primary"
+# A file the primary one references (e.g. the .bin tracks named by a .cue).
+FILE_ROLE_COMPANION = "companion"
+
 
 class GameFile(IdMixin, Base):
     """A concrete ROM file belonging to a game (region, revision, disc, hack...)."""
@@ -59,6 +73,9 @@ class GameFile(IdMixin, Base):
     region: Mapped[str | None] = mapped_column(String(64))
     label: Mapped[str | None] = mapped_column(String(255))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(16), default=FILE_ROLE_PRIMARY, server_default=FILE_ROLE_PRIMARY, nullable=False
+    )
     missing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 

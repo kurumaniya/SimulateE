@@ -17,6 +17,7 @@ class GameFileOut(ApiModel):
     region: str | None
     label: str | None
     is_primary: bool
+    role: str
     missing: bool
 
 

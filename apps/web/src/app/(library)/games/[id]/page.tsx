@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { use, useRef, useState } from "react";
 import { systemName, AUTO_STATE_SLOT, type SaveOut } from "@retroweb/shared";
-import { useDeleteSave, useGame, useSaves, useToggleFavorite, useUploadCover } from "@/lib/api/hooks";
+import {
+  useDeleteSave,
+  useGame,
+  useSaves,
+  useSystemBios,
+  useToggleFavorite,
+  useUploadCover,
+} from "@/lib/api/hooks";
 import { savesApi } from "@/lib/api/games";
 import { formatBytes, formatDate, formatPlayTime, formatRelative } from "@/lib/format";
 import { getEmulatorRegistry } from "@/lib/emulator/registry";
@@ -17,6 +24,7 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
   const { id } = use(props.params);
   const { data: game, error, isLoading } = useGame(id);
   const { data: saves } = useSaves(id);
+  const { data: bios } = useSystemBios(game?.system);
   const favorite = useToggleFavorite();
   const uploadCover = useUploadCover();
   const deleteSave = useDeleteSave();
@@ -117,6 +125,45 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
           )}
           {game.rom_missing && (
             <ErrorBanner error={{ code: "rom_missing" }} />
+          )}
+          {bios && (
+            <p className="text-sm text-muted">
+              {bios.preferred_file ? (
+                <>
+                  BIOS: <span className="font-mono text-xs text-fg">{bios.preferred_file}</span>
+                </>
+              ) : bios.optional ? (
+                <>
+                  No BIOS installed; the emulator falls back to built-in emulation, which may not
+                  work for every game.{" "}
+                  <Link href="/settings" className="underline">
+                    Upload one in Settings
+                  </Link>
+                  .
+                </>
+              ) : (
+                <>
+                  This system needs a BIOS file.{" "}
+                  <Link href="/settings" className="underline">
+                    Upload it in Settings
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
+          )}
+          {game.files.length > 1 && (
+            <ul className="text-xs text-muted">
+              {game.files.map((file) => (
+                <li key={file.id} className="font-mono">
+                  {file.filename}
+                  <span className="ml-2 font-sans">
+                    {file.role === "companion" ? "track" : "main"} · {formatBytes(file.size_bytes)}
+                    {file.missing ? " · missing" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
           {game.description && <p className="max-w-2xl text-sm text-fg/80">{game.description}</p>}
         </div>

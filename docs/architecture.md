@@ -123,7 +123,8 @@ games            id, title, title_en, title_ja, title_zh, system, cover_key,
                  developer, publisher, release_date, region, description,
                  favorite, created_at, updated_at
 game_files       id, game_id, storage_key, filename, extension, size_bytes,
-                 sha256 (unique), region, label, is_primary, missing, created_at
+                 sha256 (unique), region, label, is_primary, role (primary|companion),
+                 missing, created_at
 game_saves       id, game_id, user_id, save_type (battery|state), slot,
                  storage_key, size_bytes, screenshot_key, emulator_id, core_id,
                  core_version, client_modified_at, created_at, updated_at
@@ -137,8 +138,11 @@ game_emulator_configs
 Design notes:
 
 * **Game vs GameFile**: a game can own several files (regions, translations,
-  discs). Phase 1 creates one game per file; the schema does not prevent
-  merging later. The API exposes the *primary* file's hash/size on the game.
+  discs). The scanner creates one game per primary file; files a `.cue` sheet
+  names (`role = companion`) attach to the cue's game and are streamed by id
+  (`/api/games/{id}/files/{file_id}/{filename}`). The API exposes the
+  *primary* file's hash/size on the game; `rom_missing` is true when any file
+  is missing.
 * **Saves** record `emulator_id`, `core_id`, `core_version` so that a save
   state created by mGBA 0.10 is never silently loaded into another core.
 * **Play sessions** are server-timed: the client only says "started",
@@ -224,6 +228,17 @@ in one function so a smarter policy can replace it.
 4. Upsert by hash: known hash → update location if the file moved; new hash →
    new `Game` + `GameFile`. Files that vanished are flagged `missing`.
 
+## 9b. BIOS files
+
+BIOS images are user uploads, never downloads. `library/bios.py` is a
+registry of the file names (and known MD5s) each system accepts;
+`services/bios.py` keeps the inventory in `bios/<system>/<name>` through the
+storage provider, and `/api/bios` exposes status, upload (validated by name or
+by digest, renamed to the canonical name), download and delete. No database
+table is involved: the files on storage are the source of truth. The player
+asks `/api/bios/{system}` for the preferred file and passes its URL to the
+adapter.
+
 ## 10. Request flow for playing a game
 
 ```
@@ -232,6 +247,8 @@ POST /api/play-sessions         {game_id} → session id
 GET  /api/games/{id}/saves      list battery/state saves
 GET  /api/saves/{id}/download   binary
 GET  /api/games/{id}/rom        binary, Range supported, cached by hash ETag
+GET  /api/games/{id}/files/…    companion files (cue tracks), same streaming
+GET  /api/bios/{system}         preferred BIOS file, if any
    … play …
 POST /api/games/{id}/saves      multipart battery / state (+ screenshot)
 PATCH /api/play-sessions/{id}   {action: "heartbeat" | "end"}
@@ -282,3 +299,6 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | Scan execution | Synchronous request | Simple; libraries of thousands of files still scan in seconds unless files are huge (documented limitation) |
 | Save injection | Write save, then reset the core | EmulatorJS exposes the save path only after content loads; a reset makes the game boot with the save |
 | Test content | Hand-assembled homebrew ROM | Lets CI verify play/save/resume without any copyrighted data |
+| BIOS storage | Files on storage, no DB table | The registry defines validity; the inventory is just "which known files exist" |
+| Companion files | Adapter writes them into the emulator FS itself | EmulatorJS's `externalFiles` writes empty files for explicit paths in 4.2.3 |
+| N64 test boot | Custom 64-byte IPL3 stub | libdragon's IPL3 crashes on this Mupen64Plus build; the stub only needs the emulator's HLE boot |

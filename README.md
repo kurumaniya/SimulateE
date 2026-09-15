@@ -16,7 +16,9 @@ Open it on another device and resume.
 
 ## Features (implemented)
 
-- Six systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis (see below)
+- Eight systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis, PlayStation, Nintendo 64
+- BIOS management: upload the BIOS images you own in Settings, verified against known digests; nothing is downloaded for you
+- Multi-file games: a `.cue` sheet and the `.bin` tracks it names are one library entry
 - Library scanning of `data/roms/<system>/` with SHA-256 based duplicate detection
 - Home dashboard: Continue Playing, Recently Played, Recently Added, Favorites, Platforms
 - Library grid with search, platform filter, favorites filter and sorting
@@ -40,7 +42,8 @@ Open it on another device and resume.
 | NES / Famicom | **working** (EmulatorJS · FCEUmm) |
 | SNES / Super Famicom | **working** (EmulatorJS · Snes9x) |
 | Sega Genesis / Mega Drive | **working** (EmulatorJS · Genesis Plus GX) |
-| PlayStation, Nintendo 64 | planned (Phase 3) |
+| PlayStation | **working** (EmulatorJS · PCSX-ReARMed; `.cue`+`.bin`, `.pbp`; BIOS optional) |
+| Nintendo 64 | **working** (EmulatorJS · Mupen64Plus-Next; needs WebGL2) |
 | Nintendo DS | planned (Phase 4, melonDS) |
 | PSP | planned (Phase 5, PPSSPP) |
 | Dreamcast, Saturn, Arcade | later |
@@ -115,6 +118,7 @@ End-to-end test (needs both dev servers running and Chromium via Playwright):
 ```bash
 npm run make-test-rom     # writes a tiny homebrew ROM for each system into data/roms/<system>/
 npm run e2e               # per system: play → save → quit → replay restores it; GBA also checks resume
+                          # PS1/N64: boot + a marker planted in the server save survives the round trip
 ```
 
 The API creates the SQLite database and runs Alembic migrations on startup.
@@ -126,6 +130,8 @@ Put files you own under the system folder:
 
 ```
 data/roms/gba/Some Game (USA).gba
+data/roms/ps1/Some Game (USA).cue      + the .bin tracks it references
+data/roms/n64/Some Game (USA).z64
 ```
 
 Then **Settings → Scan library** (or `POST /api/games/scan`). The scanner
@@ -140,10 +146,20 @@ otherwise. Online metadata providers are planned (`MetadataProvider` interface).
 
 ## BIOS setup
 
-GBA runs with mGBA's built-in high-level BIOS; no file is required.
-Systems that need a BIOS (PlayStation, …) are not integrated yet. When they
-are, BIOS files will be user-uploaded into `data/bios/` — RetroWeb will never
-download them.
+Open **Settings → BIOS files**. Each system lists the file names it accepts;
+upload the image dumped from your own console and it is stored under
+`data/bios/<system>/` with its canonical name. Known images are verified by
+MD5; an unknown digest is kept but flagged.
+
+- **PlayStation**: optional. Without a BIOS, PCSX-ReARMed uses its built-in
+  high-level BIOS, which runs many but not all games. Upload `scph1001.bin`,
+  `scph5501.bin`, `scph5500.bin`, `scph5502.bin`, `scph7001.bin` or
+  `psxonpsp660.bin` for full compatibility.
+- **GBA, Nintendo 64**: no BIOS needed.
+- **Game Boy / Game Boy Color boot ROMs, Famicom Disk System**: accepted by the
+  uploader but not yet passed to the emulator.
+
+RetroWeb never downloads BIOS files.
 
 ## Save system
 
@@ -174,7 +190,9 @@ headers. Configuration is done through `.env` (see `.env.example`).
   automatic resume point is only captured by Quit.
 - Controller remapping uses EmulatorJS's built-in *Control Settings* menu
   (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
-- BIOS upload has no UI yet (none of the current systems need one; FDS and GB boot ROMs are not wired).
+- PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Multi-disc `.m3u` sets are not grouped yet.
+- Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
+- GB/GBC boot ROMs and the FDS BIOS can be uploaded but are not passed to the emulator yet.
 - Mobile works but is not optimised; virtual on-screen controls are planned.
 
 ## Legal notice
@@ -191,7 +209,7 @@ see their repositories.
 
 1. ~~Phase 1 — GBA end to end~~ done
 2. ~~Phase 2 — GB, GBC, NES, SNES, Genesis via EmulatorJS~~ done
-3. Phase 3 — PlayStation (BIOS upload), Nintendo 64
+3. ~~Phase 3 — BIOS upload, PlayStation, Nintendo 64~~ done
 4. Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)
 5. Phase 5 — PSP (PPSSPP, threads)
 6. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online metadata; multi-user accounts; input remapping UI

@@ -6,6 +6,7 @@ import { ALL_SYSTEMS, GameSystem, type ScanResult } from "@retroweb/shared";
 import { useScanLibrary, useSystems, useUploadRom } from "@/lib/api/hooks";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
 import { useBrowserCapabilities } from "@/lib/emulator/useBrowserCapabilities";
+import { BiosPanel } from "@/components/settings/BiosPanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { APP_NAME } from "@/lib/config";
@@ -104,6 +105,8 @@ export default function SettingsPage() {
         </div>
         {upload.error ? <ErrorBanner error={upload.error} /> : null}
       </section>
+
+      <BiosPanel />
 
       <section className="space-y-3 rounded-xl border border-line bg-card p-5">
         <h2 className="font-semibold">Emulators</h2>

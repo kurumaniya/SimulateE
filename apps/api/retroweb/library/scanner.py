@@ -14,11 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from retroweb.core.logging import get_logger
+from retroweb.library.cuesheet import MAX_CUE_BYTES, referenced_files
 from retroweb.library.detection import HEADER_BYTES, Detection, detect_system
 from retroweb.library.filenames import split_extension
 from retroweb.library.metadata import FilenameMetadataProvider, GameMetadata, MetadataProvider
-from retroweb.library.systems import GameSystem, all_extensions
-from retroweb.models import Game, GameFile
+from retroweb.library.systems import CONTAINER_EXTENSIONS, GameSystem, all_extensions
+from retroweb.models import FILE_ROLE_COMPANION, FILE_ROLE_PRIMARY, Game, GameFile
 from retroweb.storage import StorageObject, StorageProvider
 
 log = get_logger(__name__)
@@ -35,6 +36,9 @@ class ScannedFile:
     sha256: str
     detection: Detection
     metadata: GameMetadata
+    role: str = FILE_ROLE_PRIMARY
+    # Storage key of the container file (.cue) this companion belongs to.
+    parent_key: str | None = None
 
 
 @dataclass
@@ -88,12 +92,29 @@ class GameScanner:
                 merged.merge_missing(found)
         return merged or GameMetadata(title=split_extension(filename)[0])
 
-    def inspect(self, obj: StorageObject) -> ScannedFile | None:
+    def inspect(
+        self, obj: StorageObject, companions: dict[str, str] | None = None
+    ) -> ScannedFile | None:
         filename = obj.key.split("/")[-1]
         _, extension = split_extension(filename)
         if extension not in all_extensions():
             return None
         sha256, header = self.calculate_hash(obj.key)
+        parent_key = (companions or {}).get(obj.key)
+        if parent_key is not None:
+            # Track data named by a cue sheet: it belongs to the cue's game.
+            parent_detection = detect_system(parent_key, b"")
+            return ScannedFile(
+                key=obj.key,
+                filename=filename,
+                extension=extension,
+                size=obj.size,
+                sha256=sha256,
+                detection=parent_detection,
+                metadata=GameMetadata(title=split_extension(filename)[0]),
+                role=FILE_ROLE_COMPANION,
+                parent_key=parent_key,
+            )
         detection = detect_system(obj.key, header)
         if detection.system is None:
             return None
@@ -108,6 +129,26 @@ class GameScanner:
             metadata=metadata,
         )
 
+    def find_companions(self, objects: list[StorageObject]) -> dict[str, str]:
+        """Map companion key → container key by reading every cue sheet."""
+        keys = {obj.key for obj in objects}
+        companions: dict[str, str] = {}
+        for obj in objects:
+            _, extension = split_extension(obj.key.split("/")[-1])
+            if extension not in CONTAINER_EXTENSIONS or obj.size > MAX_CUE_BYTES:
+                continue
+            folder = obj.key.rsplit("/", 1)[0]
+            try:
+                text = self.storage.read(obj.key).decode("utf-8", errors="replace")
+            except OSError as exc:
+                log.warning("rom.scan.cue_unreadable", key=obj.key, error=str(exc))
+                continue
+            for name in referenced_files(text):
+                candidate = f"{folder}/{name}"
+                if candidate in keys and candidate != obj.key:
+                    companions[candidate] = obj.key
+        return companions
+
     # -- reconciliation ---------------------------------------------------
 
     def scan_directory(self, session: Session, prefix: str = ROM_PREFIX) -> ScanResult:
@@ -115,9 +156,12 @@ class GameScanner:
         seen_keys: set[str] = set()
         log.info("rom.scan.started", prefix=prefix)
 
-        for obj in self.storage.list(prefix):
+        objects = list(self.storage.list(prefix))
+        companions = self.find_companions(objects)
+        scanned_files: list[ScannedFile] = []
+        for obj in objects:
             try:
-                scanned = self.inspect(obj)
+                scanned = self.inspect(obj, companions)
             except Exception as exc:  # noqa: BLE001 - keep scanning other files
                 log.warning("rom.scan.file_failed", key=obj.key, error=str(exc))
                 result.errors.append(f"{obj.key}: {exc}")
@@ -126,6 +170,11 @@ class GameScanner:
                 result.skipped += 1
                 continue
             seen_keys.add(scanned.key)
+            scanned_files.append(scanned)
+
+        # Containers first so companions can attach to their game.
+        scanned_files.sort(key=lambda item: item.role == FILE_ROLE_COMPANION)
+        for scanned in scanned_files:
             self._reconcile_file(session, scanned, result)
 
         self._flag_missing(session, prefix, seen_keys, result)
@@ -138,7 +187,9 @@ class GameScanner:
         obj = StorageObject(
             key=key, size=self.storage.size(key), modified_at=self.storage.modified_at(key)
         )
-        scanned = self.inspect(obj)
+        folder = key.rsplit("/", 1)[0]
+        siblings = list(self.storage.list(folder))
+        scanned = self.inspect(obj, self.find_companions(siblings))
         if scanned is None:
             raise ValueError("file is not a recognised ROM")
         result = ScanResult()
@@ -187,6 +238,28 @@ class GameScanner:
             log.info("rom.scan.replaced", key=scanned.key, game_id=by_key.game_id)
             return by_key
 
+        if scanned.role == FILE_ROLE_COMPANION:
+            parent = session.scalar(
+                select(GameFile).where(GameFile.storage_key == scanned.parent_key)
+            )
+            if parent is None:
+                raise ValueError(f"companion {scanned.key} has no scanned container")
+            game_file = GameFile(
+                game_id=parent.game_id,
+                storage_key=scanned.key,
+                filename=scanned.filename,
+                extension=scanned.extension,
+                size_bytes=scanned.size,
+                sha256=scanned.sha256,
+                is_primary=False,
+                role=FILE_ROLE_COMPANION,
+            )
+            session.add(game_file)
+            session.flush()
+            result.added += 1
+            log.info("rom.scan.companion", key=scanned.key, game_id=parent.game_id)
+            return game_file
+
         game = Game(
             title=scanned.metadata.title,
             system=scanned.detection.system.value if scanned.detection.system else "",
@@ -205,6 +278,7 @@ class GameScanner:
             region=scanned.metadata.region,
             label=scanned.metadata.label,
             is_primary=True,
+            role=FILE_ROLE_PRIMARY,
         )
         game.files.append(game_file)
         session.add(game)

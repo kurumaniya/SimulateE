@@ -30,6 +30,7 @@ Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 | POST | `/games/upload` | Multipart: `file`, `system`. Stores the ROM under `roms/<system>/` and scans it |
 | GET | `/games/{id}/rom` | ROM binary. Supports `Range`, sends `Accept-Ranges`, `ETag` (sha256), `Content-Disposition` |
 | GET | `/games/{id}/rom/{filename}` | Same as above; `filename` must equal the stored file name (used so browser caches key per game) |
+| GET | `/games/{id}/files/{file_id}/{filename}` | Any file of a multi-file game (cue tracks). Same streaming/Range behaviour as `/rom`; `filename` must match |
 | GET | `/games/{id}/cover` | Cover image or 404 |
 | PUT | `/games/{id}/cover` | Multipart `file` (png/jpg/webp, size limited) |
 | GET | `/library/home` | Sections for the home page: `continue_playing`, `recently_played`, `recently_added`, `favorites`, `platforms` |
@@ -59,6 +60,18 @@ slots and `-1` for the automatic "Resume" state written on quit.
 Duration is computed server-side: `min(ended_at, last_heartbeat + grace) - started_at`.
 Sessions that never received `end` are closed at their last heartbeat when a
 new session starts.
+
+## BIOS
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/bios` | Every system that uses a BIOS with its accepted files and install state |
+| GET | `/bios/{system}` | One system (404 when the system uses no BIOS) |
+| POST | `/bios/{system}` | Multipart `file`. Accepted when the name is known for the system or the MD5 matches a known image (then renamed). `verified` reports the digest check |
+| GET | `/bios/{system}/{filename}` | Binary, by registry name only |
+| DELETE | `/bios/{system}/{filename}` | Remove |
+
+Error codes added: `bios_missing`.
 
 ## Health
 

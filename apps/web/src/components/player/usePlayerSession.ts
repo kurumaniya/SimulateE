@@ -9,7 +9,7 @@ import {
   missingCapabilities,
   type EmulatorAdapter,
 } from "@retroweb/emulator-core";
-import { gamesApi, savesApi } from "@/lib/api/games";
+import { biosApi, gamesApi, savesApi } from "@/lib/api/games";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
 import { SaveSyncManager, type SyncStatus } from "@/lib/saves/SaveSyncManager";
 import { PlaySessionTracker } from "@/lib/play/PlaySessionTracker";
@@ -140,12 +140,19 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       });
       if (cancelled) return;
       patch({ phase: "loading" });
+      const bios = await biosApi.forSystem(game.system).catch(() => null);
       await adapter.loadGame({
         gameId: game.id,
         title: game.title,
         system: game.system,
         romUrl: gamesApi.romUrl(game),
         romFilename: game.rom_filename ?? "game",
+        biosUrl: bios?.preferred_file
+          ? biosApi.fileUrl(game.system, bios.preferred_file)
+          : undefined,
+        companionFiles: game.files
+          .filter((file) => file.role === "companion")
+          .map((file) => ({ filename: file.filename, url: gamesApi.fileUrl(game, file) })),
       });
       if (cancelled) return;
 

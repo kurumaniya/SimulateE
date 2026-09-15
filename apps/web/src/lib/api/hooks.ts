@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GameListQuery, GameSystem, GameUpdate } from "@retroweb/shared";
-import { gamesApi, libraryApi, savesApi, sessionsApi } from "./games";
+import { biosApi, gamesApi, libraryApi, savesApi, sessionsApi } from "./games";
 
 export const queryKeys = {
   home: ["home"] as const,
@@ -10,6 +10,8 @@ export const queryKeys = {
   game: (id: string) => ["game", id] as const,
   saves: (gameId: string) => ["saves", gameId] as const,
   systems: ["systems"] as const,
+  bios: ["bios"] as const,
+  biosFor: (system: GameSystem) => ["bios", system] as const,
   recent: ["recent-sessions"] as const,
 };
 
@@ -102,5 +104,34 @@ export function useDeleteSave() {
       await client.invalidateQueries({ queryKey: queryKeys.saves(gameId) });
       await invalidate(gameId);
     },
+  });
+}
+
+export function useBiosInventory() {
+  return useQuery({ queryKey: queryKeys.bios, queryFn: biosApi.list });
+}
+
+export function useSystemBios(system: GameSystem | undefined) {
+  return useQuery({
+    queryKey: queryKeys.biosFor(system ?? ("" as GameSystem)),
+    queryFn: () => biosApi.forSystem(system as GameSystem),
+    enabled: !!system,
+  });
+}
+
+export function useUploadBios() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ system, file }: { system: GameSystem; file: File }) => biosApi.upload(system, file),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.bios }),
+  });
+}
+
+export function useDeleteBios() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ system, filename }: { system: GameSystem; filename: string }) =>
+      biosApi.remove(system, filename),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.bios }),
   });
 }

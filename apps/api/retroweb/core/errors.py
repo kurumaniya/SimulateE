@@ -79,3 +79,10 @@ class StorageError(AppError):
 
     status_code = 500
     code = "storage_error"
+
+
+class BiosMissingError(AppError):
+    """This system needs a BIOS file that is not installed."""
+
+    status_code = 404
+    code = "bios_missing"
