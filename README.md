@@ -44,7 +44,7 @@ Open it on another device and resume.
 | Sega Genesis / Mega Drive | **working** (EmulatorJS · Genesis Plus GX) |
 | PlayStation | **working** (EmulatorJS · PCSX-ReARMed; `.cue`+`.bin`, `.pbp`; BIOS optional) |
 | Nintendo 64 | **working** (EmulatorJS · Mupen64Plus-Next; needs WebGL2) |
-| Nintendo DS | planned (Phase 4, melonDS) |
+| Nintendo DS | **working** (EmulatorJS · melonDS; screen layouts, mouse/finger touch; BIOS optional) |
 | PSP | planned (Phase 5, PPSSPP) |
 | Dreamcast, Saturn, Arcade | later |
 
@@ -119,6 +119,7 @@ End-to-end test (needs both dev servers running and Chromium via Playwright):
 npm run make-test-rom     # writes a tiny homebrew ROM for each system into data/roms/<system>/
 npm run e2e               # per system: play → save → quit → replay restores it; GBA also checks resume
                           # PS1/N64: boot + a marker planted in the server save survives the round trip
+                          # NDS: mouse and finger touches are logged by the test program in both layouts
 ```
 
 The API creates the SQLite database and runs Alembic migrations on startup.
@@ -155,6 +156,9 @@ MD5; an unknown digest is kept but flagged.
   high-level BIOS, which runs many but not all games. Upload `scph1001.bin`,
   `scph5501.bin`, `scph5500.bin`, `scph5502.bin`, `scph7001.bin` or
   `psxonpsp660.bin` for full compatibility.
+- **Nintendo DS**: optional. melonDS boots games directly with its built-in
+  FreeBIOS. Upload `bios7.bin`, `bios9.bin` and `firmware.bin` (all three)
+  for full compatibility; no digests are checked for these.
 - **GBA, Nintendo 64**: no BIOS needed.
 - **Game Boy / Game Boy Color boot ROMs, Famicom Disk System**: accepted by the
   uploader but not yet passed to the emulator.
@@ -192,6 +196,9 @@ headers. Configuration is done through `.env` (see `.env.example`).
   (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
 - PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Multi-disc `.m3u` sets are not grouped yet.
 - Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
+- Nintendo DS: melonDS writes the cart save about three seconds after the
+  game's last write, so quitting inside that window can lose the very last
+  in-game save. DSi mode, microphone and Wi-Fi are not exposed.
 - GB/GBC boot ROMs and the FDS BIOS can be uploaded but are not passed to the emulator yet.
 - Mobile works but is not optimised; virtual on-screen controls are planned.
 
@@ -210,7 +217,7 @@ see their repositories.
 1. ~~Phase 1 — GBA end to end~~ done
 2. ~~Phase 2 — GB, GBC, NES, SNES, Genesis via EmulatorJS~~ done
 3. ~~Phase 3 — BIOS upload, PlayStation, Nintendo 64~~ done
-4. Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)
+4. ~~Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)~~ done
 5. Phase 5 — PSP (PPSSPP, threads)
 6. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online metadata; multi-user accounts; input remapping UI
 

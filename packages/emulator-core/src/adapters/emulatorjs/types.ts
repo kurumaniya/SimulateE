@@ -23,6 +23,8 @@ export interface EjsGameManager {
   restart(): void;
   supportsStates(): boolean;
   toggleMainLoop(playing: number): void;
+  /** Sets a libretro core option at run time (`ejs_set_variable`). */
+  setVariable(option: string, value: string): void;
 }
 
 export interface EjsInstance {
@@ -33,6 +35,12 @@ export interface EjsInstance {
   volume: number;
   muted: boolean;
   gameManager?: EjsGameManager;
+  /** Set from the core's `supportsMouse` flag; a canvas click then locks the pointer. */
+  enableMouseLock?: boolean;
+  /** Value of a setting as EmulatorJS's own menu holds it (after start). */
+  getSettingValue?(id: string): string | null;
+  /** Applies a setting through EmulatorJS's menu path, persisting it in its localStorage. */
+  menuOptionChanged?(option: string, value: string): void;
   textElem?: HTMLElement | null;
   elements: { parent: HTMLElement; menu?: HTMLElement };
   gamepad?: { terminate(): void };

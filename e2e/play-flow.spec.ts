@@ -12,6 +12,8 @@ interface SystemCase {
   system: string;
   /** Index of the boot counter inside the battery save file. */
   counterIndex: number;
+  /** How long to let the program run before quitting (default 3 s). */
+  settleMs?: number;
 }
 
 const SYSTEMS: SystemCase[] = [
@@ -21,6 +23,8 @@ const SYSTEMS: SystemCase[] = [
   { system: "nes", counterIndex: 0 },
   { system: "snes", counterIndex: 0 },
   { system: "genesis", counterIndex: 1 },
+  // melonDS writes the cart save to disk about three seconds after the last EEPROM write.
+  { system: "nds", counterIndex: 0, settleMs: 6000 },
 ];
 
 /**
@@ -47,14 +51,67 @@ async function quit(page: Page, gameId: string) {
   await page.waitForURL(`**/games/${gameId}`, { timeout: 60_000 });
 }
 
-async function playAndQuit(page: Page, gameId: string, resume = false) {
-  await page.goto(`/play/${gameId}${resume ? "?resume=1" : ""}`);
+async function waitForRunning(page: Page) {
   // The toolbar's pause button becomes enabled once the emulator reports "start".
   await expect(page.getByRole("button", { name: "Pause" })).toBeEnabled({ timeout: 90_000 });
   await expect(page.locator("canvas.ejs_canvas")).toBeVisible();
+}
+
+async function playAndQuit(page: Page, gameId: string, resume = false, settleMs = 3000) {
+  await page.goto(`/play/${gameId}${resume ? "?resume=1" : ""}`);
+  await waitForRunning(page);
   // Let the homebrew program run its first frames and write battery RAM.
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(settleMs);
   await quit(page, gameId);
+}
+
+async function batterySave(request: Page["request"], gameId: string): Promise<Buffer> {
+  const saves = await (await request.get(`${API}/api/games/${gameId}/saves?save_type=battery`)).json();
+  expect(saves.length, "core should produce a battery save").toBe(1);
+  return Buffer.from(await (await request.get(`${API}/api/saves/${saves[0].id}/download`)).body());
+}
+
+/**
+ * Centre of the DS bottom screen in page coordinates. melonDS letterboxes its
+ * framebuffer inside the canvas: in a landscape window the vertical layout
+ * fills the height and the side-by-side layout fills the width.
+ */
+async function bottomScreenCentre(page: Page, layout: "top-bottom" | "left-right") {
+  const box = await page.locator("canvas.ejs_canvas").boundingBox();
+  expect(box).not.toBeNull();
+  const { x, y, width, height } = box!;
+  return layout === "top-bottom"
+    ? { x: x + width / 2, y: y + height * 0.75 }
+    : { x: x + width * 0.75, y: y + height / 2 };
+}
+
+/**
+ * Press and hold for a few frames: the core samples the pointer once per
+ * emulated frame, so a zero-length click can fall between two samples.
+ */
+async function holdMouse(page: Page, point: { x: number; y: number }) {
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+/** Same for a finger: Playwright's `tap` has no duration, so drive CDP directly. */
+async function holdFinger(page: Page, point: { x: number; y: number }) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+  await page.waitForTimeout(150);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+}
+
+/** The NDS test program logs each touch to EEPROM 0x10 as 'T', count, x, y. */
+function expectTouchLog(save: Buffer, touches: number) {
+  expect(save[0x10]).toBe(0x54);
+  expect(save[0x11]).toBe(touches);
+  // Screen centre is (128, 96); allow for letterbox rounding.
+  expect(Math.abs(save[0x12] - 128)).toBeLessThan(24);
+  expect(Math.abs(save[0x13] - 96)).toBeLessThan(24);
 }
 
 async function findTestGame(request: Page["request"], system: string): Promise<string> {
@@ -82,22 +139,62 @@ test("library shows the scanned game and its details", async ({ page, request })
   await expect(page.getByRole("button", { name: /Play/ })).toBeEnabled();
 });
 
-for (const { system, counterIndex } of SYSTEMS) {
+for (const { system, counterIndex, settleMs } of SYSTEMS) {
   test(`${system}: play → save → quit → replay restores the save`, async ({ page, request }) => {
     const gameId = await findTestGame(request, system);
     await page.addInitScript(() => indexedDB.deleteDatabase("retroweb"));
 
-    await playAndQuit(page, gameId);
+    await playAndQuit(page, gameId, false, settleMs);
     expect(await batterySaveByte(request, gameId, counterIndex)).toBe(1);
 
     const detail = await (await request.get(`${API}/api/games/${gameId}`)).json();
     expect(detail.has_auto_state).toBe(true);
     expect(detail.play_time_seconds).toBeGreaterThan(0);
 
-    await playAndQuit(page, gameId);
+    await playAndQuit(page, gameId, false, settleMs);
     expect(await batterySaveByte(request, gameId, counterIndex)).toBe(2);
   });
 }
+
+test("nds: mouse touches and screen layouts reach the core", async ({ page, request }) => {
+  const gameId = await findTestGame(request, "nds");
+  await page.addInitScript(() => indexedDB.deleteDatabase("retroweb"));
+  await page.goto(`/play/${gameId}`);
+  await waitForRunning(page);
+  const layoutPicker = page.getByLabel("Screen layout");
+  await expect(layoutPicker).toHaveValue("top-bottom");
+  await page.waitForTimeout(1500);
+
+  // Touch mode must not lock the pointer on click, or the second click would never land.
+  await holdMouse(page, await bottomScreenCentre(page, "top-bottom"));
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => document.pointerLockElement)).toBeNull();
+
+  await page.keyboard.press("Escape");
+  await layoutPicker.selectOption("left-right");
+  await page.waitForTimeout(1500);
+  await holdMouse(page, await bottomScreenCentre(page, "left-right"));
+  await page.waitForTimeout(6000);
+  await quit(page, gameId);
+
+  expectTouchLog(await batterySave(request, gameId), 2);
+});
+
+test.describe("touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("nds: finger taps reach the core", async ({ page, request }) => {
+    const gameId = await findTestGame(request, "nds");
+    await page.addInitScript(() => indexedDB.deleteDatabase("retroweb"));
+    await page.goto(`/play/${gameId}`);
+    await waitForRunning(page);
+    await page.waitForTimeout(1500);
+    await holdFinger(page, await bottomScreenCentre(page, "top-bottom"));
+    await page.waitForTimeout(6000);
+    await quit(page, gameId);
+    expectTouchLog(await batterySave(request, gameId), 1);
+  });
+});
 
 for (const { system, probeOffset } of INJECTION_SYSTEMS) {
   test(`${system}: boots, and an uploaded save is restored into the emulator`, async ({

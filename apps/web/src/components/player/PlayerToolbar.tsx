@@ -17,6 +17,7 @@ interface Props {
   onScreenshot: () => void;
   onToggleMuted: () => void;
   onVolume: (volume: number) => void;
+  onScreenLayout: (id: string) => void;
   onFullscreen: () => void;
   onQuit: () => void;
 }
@@ -72,6 +73,25 @@ export function PlayerToolbar(props: Props) {
         )}
       </div>
 
+      {state.screenLayouts.length > 0 && (
+        <select
+          aria-label="Screen layout"
+          title="Screen layout"
+          value={state.screenLayout ?? ""}
+          disabled={!running}
+          onChange={(event) => {
+            setMenu(null);
+            props.onScreenLayout(event.target.value);
+          }}
+          className="rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-sm text-fg/90 disabled:opacity-40"
+        >
+          {state.screenLayouts.map((layout) => (
+            <option key={layout.id} value={layout.id}>
+              {layout.label}
+            </option>
+          ))}
+        </select>
+      )}
       {iconButton("Screenshot", props.onScreenshot, "📷", !running)}
       {iconButton(state.muted ? "Unmute" : "Mute", props.onToggleMuted, state.muted ? "🔇" : "🔊")}
       <input

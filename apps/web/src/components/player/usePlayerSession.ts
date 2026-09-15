@@ -8,6 +8,7 @@ import {
   detectBrowserCapabilities,
   missingCapabilities,
   type EmulatorAdapter,
+  type ScreenLayout,
 } from "@retroweb/emulator-core";
 import { biosApi, gamesApi, savesApi } from "@/lib/api/games";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
@@ -30,10 +31,15 @@ export interface PlayerState {
   message: string | null;
   muted: boolean;
   volume: number;
+  /** Layouts the running system offers; empty for single-screen consoles. */
+  screenLayouts: ScreenLayout[];
+  screenLayout: string | null;
 }
 
 const VOLUME_KEY = "retroweb.volume";
 const MUTED_KEY = "retroweb.muted";
+/** Preferred screen layout is remembered per system, not per game. */
+const layoutKey = (system: string) => `retroweb.layout.${system}`;
 
 function readStored<T>(key: string, fallback: T): T {
   try {
@@ -87,6 +93,8 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
     message: null,
     muted: false,
     volume: 0.7,
+    screenLayouts: [],
+    screenLayout: null,
   }));
 
   const patch = useCallback((changes: Partial<PlayerState>) => {
@@ -130,6 +138,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       }
       const adapter = getEmulatorRegistry().getEmulator(game.system);
       adapterRef.current = adapter;
+      const preferredLayout = readStored<string | null>(layoutKey(game.system), null);
       await adapter.initialize({
         container,
         fullscreenTarget: rootRef.current ?? container,
@@ -137,6 +146,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
         volume,
         muted,
         threads: false,
+        adapterOptions: preferredLayout ? { screenLayout: preferredLayout } : undefined,
       });
       if (cancelled) return;
       patch({ phase: "loading" });
@@ -150,6 +160,12 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
         biosUrl: bios?.preferred_file
           ? biosApi.fileUrl(game.system, bios.preferred_file)
           : undefined,
+        biosFiles: (bios?.files ?? [])
+          .filter((file) => file.installed)
+          .map((file) => ({
+            filename: file.filename,
+            url: biosApi.fileUrl(game.system, file.filename),
+          })),
         companionFiles: game.files
           .filter((file) => file.role === "companion")
           .map((file) => ({ filename: file.filename, url: gamesApi.fileUrl(game, file) })),
@@ -162,6 +178,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
 
       await adapter.start();
       if (cancelled) return;
+      patch({ screenLayouts: adapter.getScreenLayouts(), screenLayout: adapter.getScreenLayout() });
 
       const sync = new SaveSyncManager(game.id, adapter, adapter.core, (status, detail) =>
         patch({ syncStatus: status, syncDetail: detail }),
@@ -339,6 +356,23 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
     });
   }, []);
 
+  const setScreenLayout = useCallback(
+    (id: string) =>
+      withAdapter(async (adapter) => {
+        await adapter.setScreenLayout(id);
+        patch({ screenLayout: id });
+        if (game) {
+          try {
+            window.localStorage.setItem(layoutKey(game.system), JSON.stringify(id));
+          } catch {
+            /* private mode */
+          }
+        }
+        focusEmulator();
+      }),
+    [withAdapter, patch, focusEmulator, game],
+  );
+
   const toggleFullscreen = useCallback(
     () =>
       withAdapter(async (adapter) => {
@@ -381,6 +415,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       screenshot,
       setVolume,
       toggleMuted,
+      setScreenLayout,
       toggleFullscreen,
       quit,
       focusEmulator,

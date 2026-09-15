@@ -94,3 +94,11 @@ def test_oversized_bios_rejected(client: TestClient) -> None:
         files={"file": ("scph1001.bin", b"x" * (8 * 1024 * 1024 + 1), "application/octet-stream")},
     )
     assert response.status_code == 413
+
+
+def test_nds_bios_is_optional_and_lists_the_three_firmware_files(client: TestClient) -> None:
+    nds = client.get("/api/bios/nds").json()
+    assert nds["optional"] is True
+    assert nds["ready"] is True  # melonDS falls back to FreeBIOS
+    assert [f["filename"] for f in nds["files"]] == ["bios7.bin", "bios9.bin", "firmware.bin"]
+    assert all(f["known_md5"] is None for f in nds["files"])

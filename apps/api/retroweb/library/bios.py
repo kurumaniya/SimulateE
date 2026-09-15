@@ -71,6 +71,22 @@ BIOS_REGISTRY: dict[GameSystem, SystemBiosInfo] = {
             BiosSpec("gbc_bios.bin", "Game Boy Color boot ROM", "dbfce9db9deaa2567f6a84fde55f9680"),
         ),
     ),
+    GameSystem.NDS: SystemBiosInfo(
+        system=GameSystem.NDS,
+        note=(
+            "melonDS boots games directly with its built-in FreeBIOS when nothing is installed. "
+            "Upload all three original files (ARM7 BIOS, ARM9 BIOS, firmware) for full "
+            "compatibility; the DS firmware menu itself is not exposed."
+        ),
+        optional=True,
+        # No digests: several firmware revisions exist and RetroWeb only
+        # records checksums it can cite.
+        files=(
+            BiosSpec("bios7.bin", "Nintendo DS ARM7 BIOS (16 KiB)", None),
+            BiosSpec("bios9.bin", "Nintendo DS ARM9 BIOS (4 KiB)", None),
+            BiosSpec("firmware.bin", "Nintendo DS firmware (256 KiB)", None),
+        ),
+    ),
     GameSystem.NES: SystemBiosInfo(
         system=GameSystem.NES,
         note="Only Famicom Disk System images need a BIOS. Not wired to the emulator yet.",

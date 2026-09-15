@@ -19,7 +19,7 @@ wired/tested here yet, **planned** = not started.
 | Sega Genesis / Mega Drive | `genesis` | `.md`, `.gen`, `.smd`, `.bin` | EmulatorJS | Genesis Plus GX | **working** (Phase 2) | `.bin` is ambiguous; put files under `roms/genesis/` or rely on the `SEGA` header sniff. Sega CD / 32X are not registered |
 | PlayStation | `ps1` | `.cue`+`.bin`/`.img`, `.pbp`, `.m3u`, `.ccd` | EmulatorJS | PCSX-ReARMed | **working** (Phase 3) | The EmulatorJS build of PCSX-ReARMed does not accept `.chd`, `.iso` or `.exe`. Runs without a BIOS through HLE; upload one in Settings for full compatibility. Multi-disc (`.m3u`) is not grouped by the scanner yet |
 | Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next (GLideN64, WebGL2); ParaLLEl-N64 available via `adapterOptions.retroarchCore` | **working** (Phase 3) | Needs WebGL2. Slow without GPU acceleration (headless CI runs at a few fps) |
-| Nintendo DS | `nds` | `.nds` | melonDS (EmulatorJS ships a melonDS core; a dedicated adapter is required for dual-screen layout & touch) | melonDS | planned (Phase 4) | Screen layouts, touch mapping |
+| Nintendo DS | `nds` | `.nds` | EmulatorJS | melonDS (DeSmuME 2015 also fetched, not wired) | **working** (Phase 4) | Eight screen layouts switchable while playing; touch via mouse or finger. Runs on FreeBIOS unless `bios7.bin`, `bios9.bin` and `firmware.bin` are uploaded. DSi mode, microphone and Wi-Fi are not exposed. The core writes the cart save ~3 s after the game's last write, so quitting within that window can lose the very last save |
 | PSP | `psp` | `.iso`, `.cso`, `.pbp` | PPSSPP (EmulatorJS ships a PPSSPP core that **requires threads + WebGL2**) | PPSSPP | planned (Phase 5) | Needs COOP/COEP (already served), large ISOs need Range streaming (already implemented) |
 
 ## EmulatorJS integration (verified against 4.2.3 source)
@@ -162,6 +162,46 @@ the save the core produced and checks it survives server → emulator → server
   The stub relies on the emulator's HLE PIF boot, so the ROM is not valid for
   real hardware.
 
+### Nintendo DS through melonDS (verified against EmulatorJS/melonDS `src/libretro`)
+
+* **Screens.** melonDS renders both screens into one framebuffer whose shape
+  is the core option `melonds_screen_layout` (`Top/Bottom`, `Bottom/Top`,
+  `Left/Right`, `Right/Left`, `Top Only`, `Bottom Only`, `Hybrid Top`,
+  `Hybrid Bottom`). The adapter exposes these as `getScreenLayouts()` /
+  `setScreenLayout(id)`; a change goes through EmulatorJS's `menuOptionChanged`
+  (so its own settings menu agrees) and the core applies it on the next frame
+  (`RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE` → `SET_SYSTEM_AV_INFO`). The player
+  toolbar shows a layout picker whenever an adapter reports layouts; the
+  choice is remembered per system in `localStorage`.
+* **Touch.** `melonds_touch_mode` is forced to `Touch`: the core reads
+  RetroArch's absolute pointer (`RETRO_DEVICE_POINTER`), which the web input
+  driver feeds from mouse position and from touch events, and maps it onto the
+  bottom screen for the current layout. The core's default, `Mouse`, moves a
+  cursor by relative deltas and needs pointer lock, so the adapter also sets
+  EmulatorJS's `lockMouse` setting to `disabled` and clears `enableMouseLock`
+  (the core's `supportsMouse` flag turns it on). The pointer is sampled once
+  per emulated frame: a press shorter than a frame can be missed, which is
+  why the e2e test holds the button for 150 ms.
+* **BIOS.** The core looks `bios7.bin`, `bios9.bin` and `firmware.bin` up in
+  its system directory (`/`) and logs "Using FreeBIOS" when any is missing.
+  EmulatorJS's `biosUrl` handles one file, so the adapter writes every
+  installed file itself before content loads (`GameLaunchData.biosFiles`,
+  same path as companion files). `melonds_boot_directly` stays `enabled`;
+  the firmware menu is not offered.
+* **Saves.** melonDS does not expose cart SRAM through `retro_get_memory`;
+  it writes `<content>.sav` in RetroArch's save directory itself
+  (`/data/saves/melonDS/…`), next to the `.srm` RetroArch reports. The
+  adapter maps the reported path to `.sav` (`saveFileExtension`). Writes are
+  debounced: the file lands about three seconds after the game's last EEPROM
+  write (`NDSCart_SRAMManager::Flush`). `retro_reset` reloads the ROM with the
+  save file, so the usual write-then-reset injection works.
+* **Test ROM.** `scripts/test-programs/nds9.c` (ARM9: EEPROM boot counter,
+  backdrop colours, touch log at EEPROM `0x10`) and `nds7.c` (ARM7: reads
+  EXTKEYIN pen-down and the TSC over SPI into a mailbox). The header has no
+  Nintendo logo and no secure area; the ARM9 binary sits at ROM offset
+  `0x8000` so melonDS treats the cart as retail with a 64 kbit EEPROM instead
+  of a save-less homebrew cart. It runs only through direct boot.
+
 Save-state compatibility: every state uploaded by the EmulatorJS adapter is
 tagged `emulator_id="emulatorjs"`, `core_id` (`mgba`, `gambatte`, …),
 `core_version="<emulatorjs version>"` (EmulatorJS does not expose the libretro
@@ -172,8 +212,9 @@ core's own version string; the EmulatorJS release pins the core build).
 EmulatorJS handles keyboard and Gamepad API input itself (Xbox and PlayStation
 controllers use the standard gamepad mapping; the built-in *Control Settings*
 menu allows remapping). RetroWeb exposes a virtual-button vocabulary in
-`packages/emulator-core/src/input.ts` so future adapters (melonDS, PPSSPP)
-share one mapping model; a RetroWeb-level remapping UI is planned.
+`packages/emulator-core/src/input.ts` so future adapters (PPSSPP) share one
+mapping model; a RetroWeb-level remapping UI is planned. Nintendo DS touch
+input is described above; the DS X/Y buttons follow the SNES mapping below.
 
 Default keyboard layout (EmulatorJS RetroPad defaults; SNES/Genesis add X/Y
 and L/R, C on the Genesis maps to the RetroPad A button):

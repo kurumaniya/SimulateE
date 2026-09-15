@@ -20,6 +20,8 @@ Where the counter lives in the battery save file (index into the .sav/.srm):
     ps1      (no in-game write: the program only paints the screen; the e2e
               test injects bytes into the memory card and checks they survive)
     n64      (same: paints the screen; save round-trip checked by injection)
+    nds      byte 0      (EEPROM; magic "RWEB" at bytes 4-7; each touch of the
+              bottom screen is logged at 0x10 as 'T', touch number, x, y)
 
 The 6502/65816 programs were assembled with ca65 (sources in the docstrings
 below); the ARM, SM83 and 68000 programs are hand-assembled and verified with
@@ -27,7 +29,9 @@ Unicorn/PyBoy in scripts/verify-test-roms.py. The PS1 and N64 programs are C
 compiled with mipsel-/mips-linux-gnu-gcc (sources in scripts/test-programs/).
 The N64 ROM boots through a 64-byte emulator-only IPL3 stub (ipl3.S); the
 libdragon IPL3 was tried first but its RDRAM detection crashes on the
-Mupen64Plus build EmulatorJS ships.
+Mupen64Plus build EmulatorJS ships. The NDS ROM (ARM9 + ARM7 programs in
+scripts/test-programs/nds9.c and nds7.c, built with clang) relies on the
+emulator's direct boot: it carries no Nintendo logo or secure area.
 """
 
 from __future__ import annotations
@@ -434,6 +438,83 @@ def build_n64() -> bytes:
     return bytes(rom)
 
 
+# ---------------------------------------------------------------------------
+# Nintendo DS (ARM946E-S + ARM7TDMI). Direct boot only; EEPROM 64 kbit save.
+# Sources: scripts/test-programs/nds9.c and nds7.c.
+# ---------------------------------------------------------------------------
+NDS9_PROGRAM = bytes.fromhex(
+    "0cd04de21a0ea0e3010380e30f10a0e3821c81e3641180e50113a0e30128a0e3002081e5"
+    "602e80e5f0129fe5b010c0e10310a0e3b210c0e181ada0e302a98ae3b020d0e1800012e3"
+    "fcffff1ab220d0e1b0a0c0e10020a0e3b220c0e1b020d0e1800012e3fcffff1ab220d0e1"
+    "b0a0c0e10020a0e3b220c0e1b020d0e1800012e3fcffff1ab220d0e10070a0e390229fe5"
+    "04308de20060a0e3070056e30a10a0e10210a001b010c0e1b270c0e1b010d0e1800011e3"
+    "fcffff1ab210d0e10610c3e7016086e2080056e3f2ffff1a0a1aa0e3b010c0e10610a0e3"
+    "b210c0e10b10dde54270a0e30b70cde50470dde508c0dde50950dde50a40dde54560a0e3"
+    "0a60cde55760a0e30960cde55260a0e30860cde50060a0e30760cde50660cde50560cde5"
+    "016087e201e0a0e3420051e30170a0e3ff700602450054e30e70a011571025e252602ce2"
+    "011096e10e70a0110470cde5b010d0e1800011e3fcffff1ab210d0e1b0a0c0e10210a0e3"
+    "b210c0e1b010d0e1800011e3fcffff1ab210d0e1b0a0c0e10010a0e3b210c0e1b010d0e1"
+    "800011e3fcffff1ab210d0e1b0a0c0e10010a0e3b210c0e1b010d0e1800011e3fcffff1a"
+    "b210d0e10060a0e3070056e30a10a0e10210a001b010c0e10610d3e7b210c0e1b010d0e1"
+    "800011e3fcffff1ab210d0e1016086e2080056e3f2ffff1a1f1ba0e3871281e10534a0e3"
+    "b010c3e101eba0e305e48ee31010a0e3b010cee12336a0e30010a0e3001083e50c50a0e3"
+    "235685e3001085e50290a0e30d70a0e10040a0e3040000ea001095e5000051e33e1ea0e3"
+    "1010a003b010cee100c093e504005ce1f7ffff0a084015e5041015e50a6aa0e3b060c0e1"
+    "0660a0e3b260c0e101c0cde55460a0e30060cde50240cde50310cde5b010d0e1800011e3"
+    "fcffff1ab210d0e1b0a0c0e1b290c0e1b010d0e1800011e3fcffff1ab210d0e1b0a0c0e1"
+    "0010a0e3b210c0e1b010d0e1800011e3fcffff1ab210d0e1b0a0c0e11010a0e3b210c0e1"
+    "b010d0e1800011e3fcffff1ab210d0e10080a0e3030058e30a10a0e10210a001b010c0e1"
+    "0810d7e7b210c0e1b010d0e1800011e3fcffff1ab210d0e1018088e2040058e3f2ffff1a"
+    "0c40a0e1c4ffffea40a0ffff00a0ffff"
+)
+NDS7_PROGRAM = bytes.fromhex(
+    "04d04de20000a0e30c20a0e3232682e3073da0e3013383e38a1ca0e382aca0e3ffc0a0e3"
+    "ffcc8ce3ffe0a0e30150a0e30060a0e300608de5010000ea000082e50850a0e1ba6853e1"
+    "406016e22683a0e1f9ffff1ab010c3e1d040a0e3b240c3e1b060d3e1800016e3fcffff1a"
+    "b260d3e1b010c3e1b200c3e1b060d3e1800016e3fcffff1ab260d3e1b0a0c3e1b200c3e1"
+    "b070d3e1800017e3fcffff1ab270d3e1b010c3e19040a0e3b240c3e1ff7007e2066487e1"
+    "0c6006e0a693a0e1b060d3e1800016e3fcffff1ab260d3e1b010c3e1b200c3e1b060d3e1"
+    "800016e3fcffff1ab260d3e1b0a0c3e1b200c3e1b070d3e1800017e3fcffff1ab270d3e1"
+    "ff4009e2084002e5ff4007e2064484e1a4430ee0044002e50140a0e3004082e5010015e3"
+    "0850a0e1c6ffff0a00609de5016086e22346a0e3006084e50050a0e3bcffffea"
+)
+
+
+def _crc16(data: bytes) -> int:
+    """CRC-16 (poly 0xA001, init 0xFFFF) as used by the DS header."""
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc
+
+
+def build_nds() -> bytes:
+    rom = bytearray(1024 * 1024)
+    rom[0x00:0x0C] = b"RETROWEBTEST"
+    # Game code absent from melonDS's ROM list, and ARM9 code placed at
+    # 0x8000 (a retail-style layout, past the secure area): melonDS then
+    # treats the cart as retail with a 64 kbit EEPROM save instead of a
+    # save-less homebrew cart.
+    rom[0x0C:0x10] = b"RWEB"
+    rom[0x10:0x12] = b"01"
+    rom[0x14] = 3  # capacity: 128 KiB << 3 = 1 MiB
+    arm9_offset, arm7_offset = 0x8000, 0x10000
+    struct.pack_into("<IIII", rom, 0x20, arm9_offset, 0x02000000, 0x02000000, len(NDS9_PROGRAM))
+    struct.pack_into("<IIII", rom, 0x30, arm7_offset, 0x03800000, 0x03800000, len(NDS7_PROGRAM))
+    struct.pack_into("<II", rom, 0x60, 0x00586000, 0x001808F8)  # cart command settings
+    struct.pack_into("<H", rom, 0x6E, 0x051E)  # secure area delay
+    struct.pack_into("<II", rom, 0x80, arm7_offset + len(NDS7_PROGRAM), 0x4000)
+    # 0x15C holds the checksum the BIOS expects for the Nintendo logo. The
+    # logo bitmap itself is not included; the emulator's direct boot skips it.
+    struct.pack_into("<H", rom, 0x15C, 0xCF56)
+    struct.pack_into("<H", rom, 0x15E, _crc16(bytes(rom[:0x15E])))
+    rom[arm9_offset : arm9_offset + len(NDS9_PROGRAM)] = NDS9_PROGRAM
+    rom[arm7_offset : arm7_offset + len(NDS7_PROGRAM)] = NDS7_PROGRAM
+    return bytes(rom)
+
+
 BUILDERS = {
     "gba": ("RetroWeb Test (World).gba", build_gba),
     "gb": ("RetroWeb Test (World).gb", lambda: build_gb(color=False)),
@@ -443,6 +524,7 @@ BUILDERS = {
     "genesis": ("RetroWeb Test (World).md", build_genesis),
     "ps1": ("RetroWeb Test (World).cue", lambda: build_ps1_cue("RetroWeb Test (World).bin")),
     "n64": ("RetroWeb Test (World).z64", build_n64),
+    "nds": ("RetroWeb Test (World).nds", build_nds),
 }
 # Extra files written next to the primary one.
 COMPANIONS = {"ps1": ("RetroWeb Test (World).bin", build_ps1_disc)}

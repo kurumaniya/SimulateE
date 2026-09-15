@@ -174,6 +174,7 @@ interface EmulatorAdapter {
   saveState(): Promise<Uint8Array>          // bytes go to the server, not the emulator
   loadState(data: Uint8Array): Promise<void>
   getScreenshot(): Promise<Blob>
+  getScreenLayouts() / getScreenLayout() / setScreenLayout(id)   // multi-screen consoles; empty otherwise
   setVolume / setMuted / enterFullscreen / exitFullscreen
   on(event, handler)                         // 'ready' | 'started' | 'exited' | 'error'
   destroy(): Promise<void>
@@ -302,3 +303,7 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | BIOS storage | Files on storage, no DB table | The registry defines validity; the inventory is just "which known files exist" |
 | Companion files | Adapter writes them into the emulator FS itself | EmulatorJS's `externalFiles` writes empty files for explicit paths in 4.2.3 |
 | N64 test boot | Custom 64-byte IPL3 stub | libdragon's IPL3 crashes on this Mupen64Plus build; the stub only needs the emulator's HLE boot |
+| NDS | EmulatorJS's melonDS core, no separate build | Layouts and touch are core options the adapter drives; a second WASM build would duplicate the runtime for no gain |
+| Screen layouts | Adapter capability (`getScreenLayouts` / `setScreenLayout`), ids not core option strings | The toolbar stays core-agnostic; a PSP or DeSmuME adapter maps the same ids to its own options |
+| NDS touch | Core `Touch` mode (absolute pointer), mouse lock off | Works identically for mouse and finger; the core's `Mouse` mode needs pointer lock and breaks touch screens |
+| NDS BIOS | Adapter writes every installed file into the system directory | EmulatorJS's `biosUrl` handles a single file; melonDS looks three up by name |

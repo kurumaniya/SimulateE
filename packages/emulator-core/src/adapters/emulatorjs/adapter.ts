@@ -6,21 +6,60 @@ import type {
   EmulatorEvent,
   EmulatorEventMap,
   GameLaunchData,
+  ScreenLayout,
 } from "../../adapter";
 import { EmulatorError } from "../../errors";
 import { loadEmulatorJsRuntime } from "./runtime";
-import type { EjsConfig, EjsFileSystem, EjsInstance } from "./types";
+import type { EjsConfig, EjsFileSystem, EjsGameManager, EjsInstance } from "./types";
 
 export const EMULATORJS_ID = "emulatorjs";
 /** Pinned in scripts/fetch-emulatorjs.mjs; the runtime reports it at run time too. */
 export const EMULATORJS_VERSION = "4.2.3";
+
+interface CoreScreenLayout extends ScreenLayout {
+  /** Value of the core option that selects this layout. */
+  value: string;
+}
 
 interface SystemBinding {
   /** EmulatorJS `system` config value. */
   ejsSystem: string;
   /** libretro core EmulatorJS selects for that system. */
   coreId: string;
+  /** Core options and EmulatorJS settings applied at boot (user settings win). */
+  defaultOptions?: Record<string, string>;
+  /**
+   * "single": EmulatorJS downloads `biosUrl` into the system directory.
+   * "system-dir": the core looks several files up by name; the adapter
+   * writes every installed file itself before content loads.
+   */
+  biosMode?: "single" | "system-dir";
+  /**
+   * Extension of the battery save the core writes itself when it differs
+   * from the `.srm` RetroArch reports (melonDS saves `<game>.sav`).
+   */
+  saveFileExtension?: string;
+  /** Core option that selects the screen arrangement, with its values. */
+  layoutOption?: string;
+  screenLayouts?: CoreScreenLayout[];
+  /** The core takes absolute pointer input: never lock the mouse on click. */
+  absolutePointer?: boolean;
 }
+
+/**
+ * melonDS `melonds_screen_layout` values (src/libretro/libretro_core_options.h
+ * in EmulatorJS/melonDS). The first entry is the default.
+ */
+const NDS_LAYOUTS: CoreScreenLayout[] = [
+  { id: "top-bottom", label: "Vertical: top / bottom", value: "Top/Bottom" },
+  { id: "bottom-top", label: "Vertical: bottom / top", value: "Bottom/Top" },
+  { id: "left-right", label: "Side by side: top left", value: "Left/Right" },
+  { id: "right-left", label: "Side by side: bottom left", value: "Right/Left" },
+  { id: "hybrid-top", label: "Hybrid: large top", value: "Hybrid Top" },
+  { id: "hybrid-bottom", label: "Hybrid: large bottom", value: "Hybrid Bottom" },
+  { id: "top-only", label: "Top screen only", value: "Top Only" },
+  { id: "bottom-only", label: "Bottom screen only", value: "Bottom Only" },
+];
 
 /**
  * Systems the EmulatorJS adapter claims, with the EmulatorJS `system` id and
@@ -36,6 +75,25 @@ const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
   [GameSystem.GENESIS]: { ejsSystem: "segaMD", coreId: "genesis_plus_gx" },
   [GameSystem.PS1]: { ejsSystem: "psx", coreId: "pcsx_rearmed" },
   [GameSystem.N64]: { ejsSystem: "n64", coreId: "mupen64plus_next" },
+  [GameSystem.NDS]: {
+    ejsSystem: "nds",
+    coreId: "melonds",
+    biosMode: "system-dir",
+    saveFileExtension: ".sav",
+    layoutOption: "melonds_screen_layout",
+    screenLayouts: NDS_LAYOUTS,
+    absolutePointer: true,
+    defaultOptions: {
+      // "Touch" reads RetroArch's absolute pointer (mouse position or finger);
+      // the default "Mouse" mode moves a cursor by relative deltas and needs
+      // pointer lock, which is useless on a touch screen.
+      melonds_touch_mode: "Touch",
+      // EmulatorJS's own setting; the core's supportsMouse flag turns it on.
+      lockMouse: "disabled",
+      // Skip the firmware menu: works with FreeBIOS and with real firmware.
+      melonds_boot_directly: "enabled",
+    },
+  },
 };
 
 /** Milliseconds between checks for EmulatorJS's failure flag while loading. */
@@ -60,6 +118,7 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
   private muted = false;
   private startedFlag = false;
   private exited = false;
+  private layoutId: string | null = null;
   private readonly handlers = new Map<EmulatorEvent, Set<Handler>>();
 
   get core(): CoreDescriptor {
@@ -103,12 +162,13 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
     const base = config.assetsBaseUrl.endsWith("/")
       ? config.assetsBaseUrl
       : `${config.assetsBaseUrl}/`;
+    const systemDirFiles = binding.biosMode === "system-dir" ? (game.biosFiles ?? []) : [];
     const ejsConfig: EjsConfig = {
       dataPath: base,
       system: binding.ejsSystem,
       gameUrl: game.romUrl,
       gameName: game.gameId,
-      biosUrl: game.biosUrl,
+      biosUrl: binding.biosMode === "system-dir" ? undefined : game.biosUrl,
       threads: config.threads && typeof SharedArrayBuffer === "function",
       startOnLoad: false,
       volume: this.muted ? 0 : this.volume,
@@ -144,16 +204,30 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       },
       capture: { photo: { source: "canvas", format: "png", upscale: 1 } },
     };
+    const defaultOptions: Record<string, string> = { ...binding.defaultOptions };
     const preferredCore = config.adapterOptions?.retroarchCore;
     if (typeof preferredCore === "string" && preferredCore) {
       // Lets a system run on an alternative libretro core (e.g. ParaLLEl-N64
       // instead of Mupen64Plus-Next). EmulatorJS validates it against its list.
-      ejsConfig.defaultOptions = { retroarch_core: preferredCore };
+      defaultOptions.retroarch_core = preferredCore;
     }
+    this.layoutId = null;
+    if (binding.layoutOption && binding.screenLayouts?.length) {
+      const wanted = config.adapterOptions?.screenLayout;
+      const layout =
+        binding.screenLayouts.find((entry) => entry.id === wanted) ?? binding.screenLayouts[0];
+      defaultOptions[binding.layoutOption] = layout.value;
+      this.layoutId = layout.id;
+    }
+    if (Object.keys(defaultOptions).length > 0) ejsConfig.defaultOptions = defaultOptions;
     // Companion files (cue tracks) must sit next to the primary file under
-    // their exact names before RetroArch opens the content. They are fetched
+    // their exact names before RetroArch opens the content, and so must BIOS
+    // files the core looks up in its system directory ("/"). They are fetched
     // up front and written synchronously once EmulatorJS has mounted its FS.
-    const companions = await this.fetchCompanions(game.companionFiles ?? []);
+    const companions = await this.fetchCompanions([
+      ...(game.companionFiles ?? []),
+      ...systemDirFiles,
+    ]);
 
     const ready = new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -217,6 +291,42 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       emulator.startButtonClicked(button);
     });
     this.applyVolume();
+    if (this.binding?.absolutePointer) {
+      // `lockMouse: disabled` above covers the menu path; the core's
+      // supportsMouse flag sets this directly, so clear it once more.
+      emulator.enableMouseLock = false;
+    }
+    emulator.elements.parent.focus();
+  }
+
+  getScreenLayouts(): ScreenLayout[] {
+    return (this.binding?.screenLayouts ?? []).map(({ id, label }) => ({ id, label }));
+  }
+
+  getScreenLayout(): string | null {
+    const binding = this.binding;
+    if (!binding?.layoutOption || !binding.screenLayouts) return null;
+    // EmulatorJS's own settings menu may hold a value it persisted earlier.
+    const stored = this.emulator?.getSettingValue?.(binding.layoutOption);
+    const match = binding.screenLayouts.find((entry) => entry.value === stored);
+    return match?.id ?? this.layoutId;
+  }
+
+  async setScreenLayout(id: string): Promise<void> {
+    const binding = this.binding;
+    const layout = binding?.screenLayouts?.find((entry) => entry.id === id);
+    if (!binding?.layoutOption || !layout) {
+      throw new EmulatorError("emulator_failed", `Unknown screen layout "${id}".`);
+    }
+    const emulator = this.requireRunning();
+    // Goes through EmulatorJS so its menu and the core agree; the core picks
+    // the change up on its next frame (RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE).
+    if (typeof emulator.menuOptionChanged === "function") {
+      emulator.menuOptionChanged(binding.layoutOption, layout.value);
+    } else {
+      emulator.gameManager?.setVariable(binding.layoutOption, layout.value);
+    }
+    this.layoutId = layout.id;
     emulator.elements.parent.focus();
   }
 
@@ -261,18 +371,38 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
   async getSaveData(): Promise<Uint8Array | null> {
     const manager = this.requireRunning().gameManager;
     if (!manager) return null;
-    const data = manager.getSaveFile();
-    return data ? new Uint8Array(data) : null;
+    // Ask RetroArch to flush SRAM to its file first (no-op for cores that
+    // write their own save file), then read whichever file this core keeps.
+    manager.saveSaveFiles();
+    const path = this.saveFilePath(manager);
+    if (!manager.FS.analyzePath(path).exists) return null;
+    return new Uint8Array(manager.FS.readFile(path));
   }
 
   async loadSaveData(data: Uint8Array): Promise<void> {
     const manager = this.requireRunning().gameManager;
     if (!manager) throw new EmulatorError("not_running", "Emulator is not running.");
-    const path = manager.getSaveFilePath();
+    const path = this.saveFilePath(manager);
     ensureParentDirectories(manager.FS, path);
     if (manager.FS.analyzePath(path).exists) manager.FS.unlink(path);
     manager.FS.writeFile(path, data);
+    // Cores exposing SRAM through libretro re-read it here; cores that manage
+    // the file themselves (melonDS) pick it up on the reset that follows.
     manager.loadSaveFiles();
+  }
+
+  /**
+   * Where the running core keeps its battery save. RetroArch reports the
+   * SRAM path (`.srm`); a core that writes its own save file next to it
+   * under another extension is mapped through `saveFileExtension`.
+   */
+  private saveFilePath(manager: EjsGameManager): string {
+    const reported = manager.getSaveFilePath();
+    const extension = this.binding?.saveFileExtension;
+    if (!extension) return reported;
+    const dot = reported.lastIndexOf(".");
+    const slash = reported.lastIndexOf("/");
+    return (dot > slash ? reported.slice(0, dot) : reported) + extension;
   }
 
   async saveState(): Promise<Uint8Array> {

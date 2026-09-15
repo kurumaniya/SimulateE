@@ -26,3 +26,23 @@ mips-linux-gnu-objcopy -O binary -j .text ipl3.elf ipl3.bin
 ```
 
 No Nintendo or Sony code is included.
+
+The NDS program is two bare-metal C files: `nds9.c` (ARM9: EEPROM boot
+counter, backdrop colours, touch log) and `nds7.c` (ARM7: reads the touch
+screen controller over SPI into a mailbox in main RAM). Built with clang:
+
+```bash
+clang --target=armv5te-none-eabi -mcpu=arm946e-s -marm -O1 -nostdlib -ffreestanding \
+  -fno-builtin -fno-pic -fno-stack-protector -c nds9.c -o nds9.o
+ld.lld -Ttext=0x02000000 -e _start --build-id=none -o nds9.elf nds9.o
+llvm-objcopy -O binary -j .text nds9.elf nds9.bin
+
+clang --target=armv4t-none-eabi -mcpu=arm7tdmi -marm -O1 -nostdlib -ffreestanding \
+  -fno-builtin -fno-pic -fno-stack-protector -c nds7.c -o nds7.o
+ld.lld -Ttext=0x03800000 -e _start --build-id=none -o nds7.elf nds7.o
+llvm-objcopy -O binary -j .text nds7.elf nds7.bin
+```
+
+The DS header carries no Nintendo logo bitmap and no encrypted secure
+area, so the ROM only runs through an emulator's direct boot (melonDS with
+FreeBIOS), not on real hardware or through the DS firmware menu.

@@ -26,10 +26,22 @@ export interface GameLaunchData {
   /** Same-origin URL of a user-supplied BIOS, when the system needs one. */
   biosUrl?: string;
   /**
+   * Every installed BIOS/firmware file for the system. Adapters whose core
+   * looks several files up by name in its system directory write them all.
+   */
+  biosFiles?: { filename: string; url: string }[];
+  /**
    * Other files the primary one references (cue tracks, discs). Each is
    * written next to the primary file under its own name before start.
    */
   companionFiles?: { filename: string; url: string }[];
+}
+
+/** One way of arranging a multi-screen console's displays on the canvas. */
+export interface ScreenLayout {
+  /** Stable id stored in preferences, e.g. "top-bottom". */
+  id: string;
+  label: string;
 }
 
 export type EmulatorEvent = "ready" | "started" | "exited" | "error";
@@ -84,6 +96,16 @@ export interface EmulatorAdapter {
   loadState(data: Uint8Array): Promise<void>;
 
   getScreenshot(): Promise<Blob>;
+
+  /**
+   * Layouts the loaded game's system offers (empty for single-screen
+   * systems). Only meaningful after `loadGame`.
+   */
+  getScreenLayouts(): ScreenLayout[];
+  /** Currently applied layout id, or null when the system has none. */
+  getScreenLayout(): string | null;
+  /** Switch layouts while running. Rejects ids not in `getScreenLayouts()`. */
+  setScreenLayout(id: string): Promise<void>;
 
   setVolume(volume: number): void;
   setMuted(muted: boolean): void;

@@ -110,6 +110,7 @@ export function EmulatorPlayer({ game, resume }: { game: GameDetail; resume: boo
             onScreenshot={actions.screenshot}
             onToggleMuted={actions.toggleMuted}
             onVolume={actions.setVolume}
+            onScreenLayout={actions.setScreenLayout}
             onFullscreen={actions.toggleFullscreen}
             onQuit={handleQuit}
           />
