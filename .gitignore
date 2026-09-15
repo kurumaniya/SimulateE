@@ -34,3 +34,6 @@ playwright-report/
 *.db
 *.db-journal
 .DS_Store
+
+# Ad-hoc debugging scripts
+.debug-*.mjs
