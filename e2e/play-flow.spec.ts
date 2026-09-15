@@ -14,6 +14,24 @@ interface SystemCase {
   counterIndex: number;
   /** How long to let the program run before quitting (default 3 s). */
   settleMs?: number;
+  /** Reads the counter out of the save blob when it is not a flat byte array. */
+  extract?: (save: Buffer) => number;
+}
+
+/**
+ * PSP saves travel as an uncompressed tar of the memory stick's PSP/SAVEDATA
+ * tree; the test program keeps its counter in RWEB00001/COUNTER.BIN.
+ */
+function counterFromMemstickTar(save: Buffer): number {
+  let offset = 0;
+  while (offset + 512 <= save.length) {
+    const name = save.subarray(offset, offset + 100).toString("utf8").replace(/\0.*$/, "");
+    if (!name) break;
+    const size = parseInt(save.subarray(offset + 124, offset + 136).toString("utf8").trim(), 8);
+    if (name === "RWEB00001/COUNTER.BIN") return save[offset + 512];
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error("RWEB00001/COUNTER.BIN not found in the PSP save archive");
 }
 
 const SYSTEMS: SystemCase[] = [
@@ -25,6 +43,7 @@ const SYSTEMS: SystemCase[] = [
   { system: "genesis", counterIndex: 1 },
   // melonDS writes the cart save to disk about three seconds after the last EEPROM write.
   { system: "nds", counterIndex: 0, settleMs: 6000 },
+  { system: "psp", counterIndex: 0, extract: counterFromMemstickTar },
 ];
 
 /**
@@ -139,20 +158,22 @@ test("library shows the scanned game and its details", async ({ page, request })
   await expect(page.getByRole("button", { name: /Play/ })).toBeEnabled();
 });
 
-for (const { system, counterIndex, settleMs } of SYSTEMS) {
+for (const { system, counterIndex, settleMs, extract } of SYSTEMS) {
   test(`${system}: play → save → quit → replay restores the save`, async ({ page, request }) => {
     const gameId = await findTestGame(request, system);
     await page.addInitScript(() => indexedDB.deleteDatabase("retroweb"));
+    const counter = async () =>
+      extract ? extract(await batterySave(request, gameId)) : batterySaveByte(request, gameId, counterIndex);
 
     await playAndQuit(page, gameId, false, settleMs);
-    expect(await batterySaveByte(request, gameId, counterIndex)).toBe(1);
+    expect(await counter()).toBe(1);
 
     const detail = await (await request.get(`${API}/api/games/${gameId}`)).json();
     expect(detail.has_auto_state).toBe(true);
     expect(detail.play_time_seconds).toBeGreaterThan(0);
 
     await playAndQuit(page, gameId, false, settleMs);
-    expect(await batterySaveByte(request, gameId, counterIndex)).toBe(2);
+    expect(await counter()).toBe(2);
   });
 }
 

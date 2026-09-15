@@ -1,4 +1,5 @@
 import type { GameSystem } from "@retroweb/shared";
+import type { CapabilityRequirement } from "./capabilities";
 
 /** Options every adapter understands. Adapter-specific options are nested. */
 export interface EmulatorConfig {
@@ -30,6 +31,12 @@ export interface GameLaunchData {
    * looks several files up by name in its system directory write them all.
    */
   biosFiles?: { filename: string; url: string }[];
+  /**
+   * Battery save the game should boot with. Adapters that can place it
+   * before the core starts do so and report it through `initialSaveApplied()`;
+   * otherwise the platform injects it with `loadSaveData` + `reset` later.
+   */
+  batterySave?: Uint8Array;
   /**
    * Other files the primary one references (cue tracks, discs). Each is
    * written next to the primary file under its own name before start.
@@ -76,6 +83,9 @@ export interface EmulatorAdapter {
   readonly supportedSystems: GameSystem[];
   readonly core: CoreDescriptor;
 
+  /** Browser features a system needs (e.g. SharedArrayBuffer for threaded cores). */
+  capabilityRequirements(system: GameSystem): CapabilityRequirement[];
+
   initialize(config: EmulatorConfig): Promise<void>;
   loadGame(game: GameLaunchData): Promise<void>;
 
@@ -90,6 +100,8 @@ export interface EmulatorAdapter {
   /** Battery save (SRAM/flash) as the emulator currently holds it. */
   getSaveData(): Promise<Uint8Array | null>;
   loadSaveData(data: Uint8Array): Promise<void>;
+  /** True when `GameLaunchData.batterySave` was in place before the core booted. */
+  initialSaveApplied(): boolean;
 
   /** Serialise the full emulator state. */
   saveState(): Promise<Uint8Array>;

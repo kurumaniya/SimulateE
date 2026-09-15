@@ -8,8 +8,11 @@ export interface EjsFileSystem {
   readFile(path: string): Uint8Array;
   unlink(path: string): void;
   mkdir(path: string): void;
+  rmdir(path: string): void;
+  readdir(path: string): string[];
   analyzePath(path: string): { exists: boolean };
-  stat(path: string): { mtime: Date; size: number };
+  stat(path: string): { mtime: Date; size: number; mode: number };
+  isDir(mode: number): boolean;
 }
 
 export interface EjsGameManager {

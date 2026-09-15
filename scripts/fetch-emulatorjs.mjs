@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const VERSION = "4.2.3";
-const CORES = ["mgba", "gambatte", "fceumm", "snes9x", "genesis_plus_gx", "pcsx_rearmed", "mupen64plus_next", "parallel_n64", "melonds", "desmume2015"];
+const CORES = ["mgba", "gambatte", "fceumm", "snes9x", "genesis_plus_gx", "pcsx_rearmed", "mupen64plus_next", "parallel_n64", "melonds", "desmume2015", "ppsspp"];
 const REGISTRY = process.env.NPM_REGISTRY ?? "https://registry.npmjs.org";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -86,6 +86,15 @@ async function main() {
       await cp(path.join(pkg, file), path.join(target, "cores", file));
     }
     await cp(path.join(pkg, "reports", `${core}.json`), path.join(target, "cores", "reports", `${core}.json`));
+    // PPSSPP ships its runtime assets (flash0, compat.ini, fonts) as a zip the
+    // runtime fetches from cores/ppsspp-assets.zip.
+    const assets = `${core}-assets.zip`;
+    try {
+      await stat(path.join(pkg, assets));
+      await cp(path.join(pkg, assets), path.join(target, "cores", assets));
+    } catch {
+      // core has no asset bundle
+    }
   }
 
   await writeFile(marker, JSON.stringify({ version: VERSION, cores: CORES, fetchedAt: new Date().toISOString() }, null, 2));

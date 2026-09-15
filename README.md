@@ -45,7 +45,7 @@ Open it on another device and resume.
 | PlayStation | **working** (EmulatorJS · PCSX-ReARMed; `.cue`+`.bin`, `.pbp`; BIOS optional) |
 | Nintendo 64 | **working** (EmulatorJS · Mupen64Plus-Next; needs WebGL2) |
 | Nintendo DS | **working** (EmulatorJS · melonDS; screen layouts, mouse/finger touch; BIOS optional) |
-| PSP | planned (Phase 5, PPSSPP) |
+| PSP | **working** (EmulatorJS · PPSSPP; needs a cross-origin-isolated page and WebGL2) |
 | Dreamcast, Saturn, Arcade | later |
 
 Details and known issues: [docs/emulator-support.md](docs/emulator-support.md).
@@ -120,6 +120,7 @@ npm run make-test-rom     # writes a tiny homebrew ROM for each system into data
 npm run e2e               # per system: play → save → quit → replay restores it; GBA also checks resume
                           # PS1/N64: boot + a marker planted in the server save survives the round trip
                           # NDS: mouse and finger touches are logged by the test program in both layouts
+                          # PSP: counter lives in the memory-stick save tree (packed as tar)
 ```
 
 The API creates the SQLite database and runs Alembic migrations on startup.
@@ -196,6 +197,10 @@ headers. Configuration is done through `.env` (see `.env.example`).
   (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
 - PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Multi-disc `.m3u` sets are not grouped yet.
 - Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
+- PSP: PPSSPP only runs cross-origin isolated (the app sends the headers;
+  a reverse proxy in front of it must keep them) with WebGL2. Saves are the
+  whole `PSP/SAVEDATA` tree of a per-browser memory stick, packed as a tar;
+  save states are about 40 MB each.
 - Nintendo DS: melonDS writes the cart save about three seconds after the
   game's last write, so quitting inside that window can lose the very last
   in-game save. DSi mode, microphone and Wi-Fi are not exposed.
@@ -218,7 +223,7 @@ see their repositories.
 2. ~~Phase 2 — GB, GBC, NES, SNES, Genesis via EmulatorJS~~ done
 3. ~~Phase 3 — BIOS upload, PlayStation, Nintendo 64~~ done
 4. ~~Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)~~ done
-5. Phase 5 — PSP (PPSSPP, threads)
+5. ~~Phase 5 — PSP (PPSSPP, threads)~~ done
 6. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online metadata; multi-user accounts; input remapping UI
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

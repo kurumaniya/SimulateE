@@ -9,6 +9,8 @@ import type {
   ScreenLayout,
 } from "../../adapter";
 import { EmulatorError } from "../../errors";
+import { BASE_REQUIREMENTS, type CapabilityRequirement } from "../../capabilities";
+import { clearTree, packTree, unpackTree } from "./memstick";
 import { loadEmulatorJsRuntime } from "./runtime";
 import type { EjsConfig, EjsFileSystem, EjsGameManager, EjsInstance } from "./types";
 
@@ -44,7 +46,29 @@ interface SystemBinding {
   screenLayouts?: CoreScreenLayout[];
   /** The core takes absolute pointer input: never lock the mouse on click. */
   absolutePointer?: boolean;
+  /**
+   * "required": EmulatorJS only ships a threaded build of this core, so the
+   * page must be cross-origin isolated (SharedArrayBuffer) to run it.
+   */
+  threads?: "required";
+  /** The core renders through WebGL2 only (EmulatorJS ships no legacy build). */
+  webgl2?: "required";
+  /**
+   * "memstick": the core keeps saves as a directory tree on a virtual
+   * memory stick instead of one SRAM file; the adapter packs and unpacks
+   * that tree (see `MEMSTICK_SAVE_DIR`).
+   */
+  saveModel?: "memstick";
+  /**
+   * Where RetroArch's per-core save directory lands in the emulator FS
+   * (`savefile_directory` "/data/saves" plus the core's library name). Used
+   * before content loads; checked against the path the core reports after.
+   */
+  saveDirectory?: string;
 }
+
+/** Sub-directory of a PSP memory stick that holds game saves. */
+const MEMSTICK_SAVE_DIR = "PSP/SAVEDATA";
 
 /**
  * melonDS `melonds_screen_layout` values (src/libretro/libretro_core_options.h
@@ -94,6 +118,14 @@ const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
       melonds_boot_directly: "enabled",
     },
   },
+  [GameSystem.PSP]: {
+    ejsSystem: "psp",
+    coreId: "ppsspp",
+    threads: "required",
+    webgl2: "required",
+    saveModel: "memstick",
+    saveDirectory: "/data/saves/PPSSPP",
+  },
 };
 
 /** Milliseconds between checks for EmulatorJS's failure flag while loading. */
@@ -119,6 +151,7 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
   private startedFlag = false;
   private exited = false;
   private layoutId: string | null = null;
+  private initialSaveWritten = false;
   private readonly handlers = new Map<EmulatorEvent, Set<Handler>>();
 
   get core(): CoreDescriptor {
@@ -127,6 +160,21 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       coreId: this.binding?.coreId ?? "unknown",
       coreVersion: this.emulator?.ejs_version ?? EMULATORJS_VERSION,
     };
+  }
+
+  capabilityRequirements(system: GameSystem): CapabilityRequirement[] {
+    const binding = SYSTEM_BINDINGS[system];
+    const requirements = [...BASE_REQUIREMENTS];
+    if (binding?.webgl2 === "required") {
+      requirements.push({ key: "webgl2", label: "WebGL2" });
+    }
+    if (binding?.threads === "required") {
+      requirements.push({
+        key: "sharedArrayBuffer",
+        label: "SharedArrayBuffer (the page must be served cross-origin isolated)",
+      });
+    }
+    return requirements;
   }
 
   async initialize(config: EmulatorConfig): Promise<void> {
@@ -144,6 +192,7 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
     }
     this.game = game;
     this.binding = binding;
+    this.initialSaveWritten = false;
     await this.assertRomReachable(game.romUrl);
 
     const EmulatorJS = window.EmulatorJS;
@@ -163,13 +212,20 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       ? config.assetsBaseUrl
       : `${config.assetsBaseUrl}/`;
     const systemDirFiles = binding.biosMode === "system-dir" ? (game.biosFiles ?? []) : [];
+    const sharedMemory = typeof SharedArrayBuffer === "function";
+    if (binding.threads === "required" && !sharedMemory) {
+      throw new EmulatorError(
+        "unsupported_browser",
+        "This system needs a threaded emulator core: the page must be served cross-origin isolated (COOP/COEP headers) and the browser must expose SharedArrayBuffer.",
+      );
+    }
     const ejsConfig: EjsConfig = {
       dataPath: base,
       system: binding.ejsSystem,
       gameUrl: game.romUrl,
       gameName: game.gameId,
       biosUrl: binding.biosMode === "system-dir" ? undefined : game.biosUrl,
-      threads: config.threads && typeof SharedArrayBuffer === "function",
+      threads: binding.threads === "required" || (config.threads && sharedMemory),
       startOnLoad: false,
       volume: this.muted ? 0 : this.volume,
       // RetroWeb owns ROM caching and save persistence; EmulatorJS's own
@@ -238,8 +294,21 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       emulator.on("saveDatabaseLoaded", (fs) => {
         try {
           writeCompanionFiles(fs as EjsFileSystem, companions);
+          if (binding.saveModel === "memstick" && binding.saveDirectory) {
+            // The memory stick persists in the browser across games. RetroWeb
+            // owns saves server-side, so start every game from an empty
+            // SAVEDATA holding only this game's own tree. This must happen
+            // before boot: PPSSPP's retro_reset asserts on a boot thread it
+            // never joined, so the usual inject-then-reset path is unusable.
+            const root = `${binding.saveDirectory}/${MEMSTICK_SAVE_DIR}`;
+            clearTree(fs as EjsFileSystem, root);
+            if (game.batterySave) {
+              unpackTree(fs as EjsFileSystem, root, game.batterySave);
+              this.initialSaveWritten = true;
+            }
+          }
         } catch (error) {
-          console.error("failed to write companion files", error);
+          console.error("failed to prepare the emulator file system", error);
         }
       });
       emulator.on("ready", () => {
@@ -371,6 +440,9 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
   async getSaveData(): Promise<Uint8Array | null> {
     const manager = this.requireRunning().gameManager;
     if (!manager) return null;
+    if (this.binding?.saveModel === "memstick") {
+      return packTree(manager.FS, this.memstickSaveDir(manager));
+    }
     // Ask RetroArch to flush SRAM to its file first (no-op for cores that
     // write their own save file), then read whichever file this core keeps.
     manager.saveSaveFiles();
@@ -379,9 +451,19 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
     return new Uint8Array(manager.FS.readFile(path));
   }
 
+  initialSaveApplied(): boolean {
+    return this.initialSaveWritten;
+  }
+
   async loadSaveData(data: Uint8Array): Promise<void> {
     const manager = this.requireRunning().gameManager;
     if (!manager) throw new EmulatorError("not_running", "Emulator is not running.");
+    if (this.binding?.saveModel === "memstick") {
+      const root = this.memstickSaveDir(manager);
+      clearTree(manager.FS, root);
+      unpackTree(manager.FS, root, data);
+      return; // the reset that follows re-reads the memory stick
+    }
     const path = this.saveFilePath(manager);
     ensureParentDirectories(manager.FS, path);
     if (manager.FS.analyzePath(path).exists) manager.FS.unlink(path);
@@ -396,6 +478,17 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
    * SRAM path (`.srm`); a core that writes its own save file next to it
    * under another extension is mapped through `saveFileExtension`.
    */
+  /** `<save directory>/PSP/SAVEDATA`, taking the directory from the core once it runs. */
+  private memstickSaveDir(manager: EjsGameManager): string {
+    const reported = manager.getSaveFilePath();
+    const directory = reported.slice(0, Math.max(0, reported.lastIndexOf("/")));
+    const expected = this.binding?.saveDirectory;
+    if (expected && expected !== directory) {
+      console.warn(`memory stick expected at ${expected} but the core reports ${directory}`);
+    }
+    return `${directory}/${MEMSTICK_SAVE_DIR}`;
+  }
+
   private saveFilePath(manager: EjsGameManager): string {
     const reported = manager.getSaveFilePath();
     const extension = this.binding?.saveFileExtension;

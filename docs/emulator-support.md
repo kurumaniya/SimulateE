@@ -20,7 +20,7 @@ wired/tested here yet, **planned** = not started.
 | PlayStation | `ps1` | `.cue`+`.bin`/`.img`, `.pbp`, `.m3u`, `.ccd` | EmulatorJS | PCSX-ReARMed | **working** (Phase 3) | The EmulatorJS build of PCSX-ReARMed does not accept `.chd`, `.iso` or `.exe`. Runs without a BIOS through HLE; upload one in Settings for full compatibility. Multi-disc (`.m3u`) is not grouped by the scanner yet |
 | Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next (GLideN64, WebGL2); ParaLLEl-N64 available via `adapterOptions.retroarchCore` | **working** (Phase 3) | Needs WebGL2. Slow without GPU acceleration (headless CI runs at a few fps) |
 | Nintendo DS | `nds` | `.nds` | EmulatorJS | melonDS (DeSmuME 2015 also fetched, not wired) | **working** (Phase 4) | Eight screen layouts switchable while playing; touch via mouse or finger. Runs on FreeBIOS unless `bios7.bin`, `bios9.bin` and `firmware.bin` are uploaded. DSi mode, microphone and Wi-Fi are not exposed. The core writes the cart save ~3 s after the game's last write, so quitting within that window can lose the very last save |
-| PSP | `psp` | `.iso`, `.cso`, `.pbp` | PPSSPP (EmulatorJS ships a PPSSPP core that **requires threads + WebGL2**) | PPSSPP | planned (Phase 5) | Needs COOP/COEP (already served), large ISOs need Range streaming (already implemented) |
+| PSP | `psp` | `.iso`, `.cso`, `.pbp` (also `.elf`/`.prx` homebrew) | EmulatorJS | PPSSPP (threaded build only; WebGL2) | **working** (Phase 5) | Needs a cross-origin-isolated page (COOP/COEP, served by default) and WebGL2. Saves are the memory stick's `PSP/SAVEDATA` tree packed as a tar. Save states are ~40 MB. Software-rendered headless runs are slow; a GPU is expected for real games |
 
 ## EmulatorJS integration (verified against 4.2.3 source)
 
@@ -202,6 +202,45 @@ the save the core produced and checks it survives server → emulator → server
   `0x8000` so melonDS treats the cart as retail with a 64 kbit EEPROM instead
   of a save-less homebrew cart. It runs only through direct boot.
 
+### PSP through PPSSPP (verified against EmulatorJS/ppsspp `libretro/libretro.cpp`)
+
+* **Threads and WebGL2.** EmulatorJS ships only `ppsspp-thread-wasm.data`
+  and lists the core under `requiresThreads` and `requiresWebGL2`. The
+  adapter therefore turns EmulatorJS threads on for PSP regardless of the
+  player setting, and `capabilityRequirements("psp")` adds SharedArrayBuffer
+  (i.e. `crossOriginIsolated`, which the Next.js COOP/COEP headers provide)
+  and WebGL2, so an unsupported browser gets a clear message instead of a
+  blank screen.
+* **Assets.** The core needs `cores/ppsspp-assets.zip` (compat.ini, fonts,
+  `flash0`); EmulatorJS unpacks it into `/PPSSPP` before content loads. The
+  fetch script copies it from the `@emulatorjs/core-ppsspp` package.
+* **Saves.** PPSSPP has no SRAM: `retro_get_memory` exposes RAM only and the
+  memory stick is RetroArch's save directory, `/data/saves/PPSSPP`, where
+  games write `PSP/SAVEDATA/<id>/…` through `sceIo`. The battery save is
+  that tree packed as an uncompressed ustar archive (`memstick.ts`). Because
+  the memory stick persists in the browser across games, the adapter empties
+  `PSP/SAVEDATA` before every boot and unpacks the game's own archive into it.
+* **No reset injection.** `retro_reset` in this build calls `PSP_Init` while
+  the asynchronous boot thread is still joinable and trips an assertion, so
+  the write-save-then-reset flow used for other cores is unusable. The
+  platform now resolves the battery save *before* the emulator loads
+  (`resolveBatterySave`) and hands it to `loadGame`; the PSP adapter writes
+  it on `saveDatabaseLoaded` and reports `initialSaveApplied()`, and the
+  sync manager skips the reset. Other cores keep the old path.
+* **Large uploads.** PPSSPP save states are ~40 MB. Next.js caps bodies
+  forwarded through the `/api` rewrite at 10 MB by default
+  (`experimental.proxyClientMaxBodySize`); the config raises it to 2 GB to
+  match the API's ROM upload limit.
+* **Test program.** `scripts/test-programs/psp.c` + `psp-stubs.S` + `psp.ld`
+  build a static user-mode ELF with a real module info block, `syslib`
+  export table and NID import stubs (layout from the PSP SDK; PPSSPP patches
+  each stub into a syscall). It is wrapped in a PBP with a PARAM.SFO
+  (`DISC_ID RWEB00001`). The program counts boots in
+  `ms0:/PSP/SAVEDATA/RWEB00001/COUNTER.BIN` and paints the screen.
+* **`.pbp` detection.** PS1 classics for the PSP are PBPs too; the scanner
+  reads `CATEGORY` from the embedded PARAM.SFO (`ME` → PS1) when the
+  extension alone cannot decide.
+
 Save-state compatibility: every state uploaded by the EmulatorJS adapter is
 tagged `emulator_id="emulatorjs"`, `core_id` (`mgba`, `gambatte`, …),
 `core_version="<emulatorjs version>"` (EmulatorJS does not expose the libretro
@@ -237,6 +276,7 @@ Checked by `BrowserCapabilities` before an emulator is created:
 | WebAssembly | all |
 | WebGL (1 or 2) | all (WebGL2 preferred; legacy core used otherwise) |
 | IndexedDB | save backup + EmulatorJS caches |
-| SharedArrayBuffer | threaded cores only (PPSSPP, DOSBox) — requires COOP/COEP headers |
+| SharedArrayBuffer | threaded cores only (PPSSPP) — requires the COOP/COEP headers the web app sends |
+| WebGL2 | PPSSPP (no legacy build); N64 for usable speed |
 | Gamepad API | controller support (optional) |
 | Fullscreen API | fullscreen button (optional) |

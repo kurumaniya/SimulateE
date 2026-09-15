@@ -307,3 +307,6 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | Screen layouts | Adapter capability (`getScreenLayouts` / `setScreenLayout`), ids not core option strings | The toolbar stays core-agnostic; a PSP or DeSmuME adapter maps the same ids to its own options |
 | NDS touch | Core `Touch` mode (absolute pointer), mouse lock off | Works identically for mouse and finger; the core's `Mouse` mode needs pointer lock and breaks touch screens |
 | NDS BIOS | Adapter writes every installed file into the system directory | EmulatorJS's `biosUrl` handles a single file; melonDS looks three up by name |
+| PSP saves | `PSP/SAVEDATA` tree packed as an uncompressed tar, one blob per game | Keeps the server's one-blob battery model; PPSSPP has no SRAM; the tree is emptied before each boot because the browser memory stick is shared |
+| Battery save timing | Resolved before the emulator loads, applied before boot when the adapter can (`initialSaveApplied`), otherwise inject + reset after start | PPSSPP's `retro_reset` asserts on its never-joined boot thread; restoring before boot also removes a reboot for every core that can take it |
+| Proxy body size | `experimental.proxyClientMaxBodySize = 2gb` | Next.js drops rewritten request bodies over 10 MB; PPSSPP states are ~40 MB and ROM uploads larger |

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AUTO_STATE_SLOT, type GameDetail } from "@retroweb/shared";
 import {
-  BASE_REQUIREMENTS,
   EmulatorError,
   detectBrowserCapabilities,
   missingCapabilities,
@@ -12,7 +11,7 @@ import {
 } from "@retroweb/emulator-core";
 import { biosApi, gamesApi, savesApi } from "@/lib/api/games";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
-import { SaveSyncManager, type SyncStatus } from "@/lib/saves/SaveSyncManager";
+import { SaveSyncManager, resolveBatterySave, type SyncStatus } from "@/lib/saves/SaveSyncManager";
 import { PlaySessionTracker } from "@/lib/play/PlaySessionTracker";
 
 export type PlayerPhase = "booting" | "loading" | "running" | "paused" | "exiting" | "error";
@@ -125,19 +124,19 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
     patch({ volume, muted });
 
     const run = async () => {
+      if (game.rom_missing) {
+        throw new EmulatorError("rom_missing", "The ROM file for this game is missing on the server.");
+      }
+      const adapter = getEmulatorRegistry().getEmulator(game.system);
+      adapterRef.current = adapter;
       const capabilities = detectBrowserCapabilities();
-      const missing = missingCapabilities(capabilities, BASE_REQUIREMENTS);
+      const missing = missingCapabilities(capabilities, adapter.capabilityRequirements(game.system));
       if (missing.length > 0) {
         throw new EmulatorError(
           "unsupported_browser",
           `This browser lacks: ${missing.map((m) => m.label).join(", ")}. Use a recent Chrome, Edge or Safari.`,
         );
       }
-      if (game.rom_missing) {
-        throw new EmulatorError("rom_missing", "The ROM file for this game is missing on the server.");
-      }
-      const adapter = getEmulatorRegistry().getEmulator(game.system);
-      adapterRef.current = adapter;
       const preferredLayout = readStored<string | null>(layoutKey(game.system), null);
       await adapter.initialize({
         container,
@@ -150,7 +149,12 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       });
       if (cancelled) return;
       patch({ phase: "loading" });
-      const bios = await biosApi.forSystem(game.system).catch(() => null);
+      const onSyncStatus = (status: SyncStatus, detail?: string) =>
+        patch({ syncStatus: status, syncDetail: detail });
+      const [bios, batterySave] = await Promise.all([
+        biosApi.forSystem(game.system).catch(() => null),
+        resolveBatterySave(game.id, onSyncStatus),
+      ]);
       await adapter.loadGame({
         gameId: game.id,
         title: game.title,
@@ -169,6 +173,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
         companionFiles: game.files
           .filter((file) => file.role === "companion")
           .map((file) => ({ filename: file.filename, url: gamesApi.fileUrl(game, file) })),
+        batterySave: batterySave?.data,
       });
       if (cancelled) return;
 
@@ -180,11 +185,9 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       if (cancelled) return;
       patch({ screenLayouts: adapter.getScreenLayouts(), screenLayout: adapter.getScreenLayout() });
 
-      const sync = new SaveSyncManager(game.id, adapter, adapter.core, (status, detail) =>
-        patch({ syncStatus: status, syncDetail: detail }),
-      );
+      const sync = new SaveSyncManager(game.id, adapter, adapter.core, onSyncStatus);
       syncRef.current = sync;
-      const source = await sync.restoreBatterySave();
+      const source = await sync.applyBatterySave(batterySave);
       if (source !== "none") flash(`Save restored (${source === "server" ? "cloud" : "local backup"})`);
 
       if (resume) {

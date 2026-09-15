@@ -9,11 +9,57 @@ export interface SaveSyncEvents {
   status: (status: SyncStatus, detail?: string) => void;
 }
 
-interface Candidate {
+export interface Candidate {
   data: Uint8Array;
   modifiedAt: string;
   source: "server" | "local";
   serverSave?: SaveOut;
+  /** Set when the local copy never reached the server. */
+  dirty?: boolean;
+}
+
+/**
+ * Resolve the newest battery save between the server and the local backup.
+ * Runs before the emulator loads so adapters can put the save in place
+ * before the game boots.
+ */
+export async function resolveBatterySave(
+  gameId: string,
+  onStatus?: SaveSyncEvents["status"],
+): Promise<Candidate | undefined> {
+  const key = localSaveKey(gameId, "battery", BATTERY_SLOT);
+  const [local, serverList] = await Promise.all([
+    localSaveStore.get(key).catch(() => undefined),
+    savesApi
+      .list(gameId, "battery")
+      .then((rows) => rows.find((row) => row.slot === BATTERY_SLOT))
+      .catch(() => undefined),
+  ]);
+
+  const candidates: Candidate[] = [];
+  if (local) {
+    candidates.push({
+      data: local.data,
+      modifiedAt: local.modifiedAt,
+      source: "local",
+      dirty: local.dirty,
+    });
+  }
+  if (serverList) {
+    try {
+      const data = await savesApi.download(serverList.id);
+      candidates.push({
+        data,
+        modifiedAt: serverList.client_modified_at ?? serverList.updated_at,
+        source: "server",
+        serverSave: serverList,
+      });
+    } catch (error) {
+      onStatus?.("offline", "Could not download the save from the server.");
+      console.warn("save download failed", error);
+    }
+  }
+  return pickNewest(candidates);
 }
 
 /**
@@ -37,50 +83,26 @@ export class SaveSyncManager {
   ) {}
 
   /**
-   * Called once the emulator is running: resolve the newest battery save
-   * between server and local backup, load it, and push a dirty local copy
-   * if the server never received it.
+   * Called once the emulator is running with the save chosen by
+   * `resolveBatterySave()`: make sure the game has it, and push a dirty
+   * local copy if the server never received it.
    */
-  async restoreBatterySave(): Promise<"server" | "local" | "none"> {
-    const key = localSaveKey(this.gameId, "battery", BATTERY_SLOT);
-    const [local, serverList] = await Promise.all([
-      localSaveStore.get(key).catch(() => undefined),
-      savesApi
-        .list(this.gameId, "battery")
-        .then((rows) => rows.find((row) => row.slot === BATTERY_SLOT))
-        .catch(() => undefined),
-    ]);
-
-    const candidates: Candidate[] = [];
-    if (local) {
-      candidates.push({ data: local.data, modifiedAt: local.modifiedAt, source: "local" });
-    }
-    if (serverList) {
-      try {
-        const data = await savesApi.download(serverList.id);
-        candidates.push({
-          data,
-          modifiedAt: serverList.client_modified_at ?? serverList.updated_at,
-          source: "server",
-          serverSave: serverList,
-        });
-      } catch (error) {
-        this.onStatus("offline", "Could not download the save from the server.");
-        console.warn("save download failed", error);
-      }
-    }
-    const chosen = pickNewest(candidates);
+  async applyBatterySave(chosen: Candidate | undefined): Promise<"server" | "local" | "none"> {
     if (!chosen) return "none";
+    const key = localSaveKey(this.gameId, "battery", BATTERY_SLOT);
 
-    await this.adapter.loadSaveData(chosen.data);
-    // The core already booted once without this save (EmulatorJS only exposes
-    // the save path after content is loaded). Reboot so the game starts with it.
-    await this.adapter.reset();
+    if (!this.adapter.initialSaveApplied()) {
+      // The core already booted once without this save (EmulatorJS only
+      // exposes the save path after content is loaded). Reboot so the game
+      // starts with it.
+      await this.adapter.loadSaveData(chosen.data);
+      await this.adapter.reset();
+    }
     this.lastUploadedHash = await sha256Hex(chosen.data);
 
-    if (chosen.source === "local" && local?.dirty) {
+    if (chosen.source === "local" && chosen.dirty) {
       // The server missed this save (upload failed last time). Push it now.
-      await this.upload(chosen.data, local.modifiedAt);
+      await this.upload(chosen.data, chosen.modifiedAt);
     } else if (chosen.source === "server") {
       await localSaveStore
         .put(this.record(key, chosen.data, this.lastUploadedHash, chosen.modifiedAt, false))

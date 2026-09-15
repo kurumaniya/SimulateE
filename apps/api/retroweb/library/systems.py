@@ -119,6 +119,7 @@ ADAPTER_SUPPORTED_SYSTEMS: frozenset[GameSystem] = frozenset(
         GameSystem.PS1,
         GameSystem.N64,
         GameSystem.NDS,
+        GameSystem.PSP,
     }
 )
 

@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../../"),
   reactStrictMode: true,
   typedRoutes: true,
+  experimental: {
+    // Bodies forwarded through the /api rewrite are capped at 10 MB by
+    // default, which drops ROM uploads and large save states (PPSSPP states
+    // are ~40 MB). Match the API's MAX_ROM_UPLOAD_BYTES default.
+    proxyClientMaxBodySize: "2gb",
+  },
   // The browser only ever talks to this origin; /api is forwarded server-side.
   // That keeps ROM streaming same-origin, which COEP requires.
   async rewrites() {

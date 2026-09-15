@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 
 from retroweb.library.filenames import split_extension
@@ -44,6 +45,37 @@ def _sniff_header(header: bytes, candidates: list[GameSystem]) -> GameSystem | N
         if system is GameSystem.PS1 and header[:12] == CD_SYNC:
             # Raw 2352-byte CD sector: a disc image track, not a cartridge dump.
             return system
+        if system in (GameSystem.PSP, GameSystem.PS1) and header[:4] == b"\0PBP":
+            return _pbp_system(header)
+    return None
+
+
+def _pbp_system(header: bytes) -> GameSystem:
+    """A PBP is a PSP package; PS1 classics converted for the PSP say so in
+    PARAM.SFO (CATEGORY "ME"). Anything else is treated as PSP content."""
+    return GameSystem.PS1 if _sfo_value(header, b"CATEGORY") == b"ME" else GameSystem.PSP
+
+
+def _sfo_value(header: bytes, wanted: bytes) -> bytes | None:
+    """Read one string entry of the PARAM.SFO embedded at the PBP's first offset."""
+    try:
+        (sfo_offset,) = struct.unpack_from("<I", header, 8)
+        magic, _version, key_table, data_table, count = struct.unpack_from(
+            "<IIIII", header, sfo_offset
+        )
+        if magic != 0x46535000:
+            return None
+        for i in range(count):
+            key_offset, _fmt, length, _max_len, data_offset = struct.unpack_from(
+                "<HHIII", header, sfo_offset + 20 + i * 16
+            )
+            key_start = sfo_offset + key_table + key_offset
+            key_end = header.index(b"\0", key_start)
+            if header[key_start:key_end] == wanted:
+                start = sfo_offset + data_table + data_offset
+                return header[start : start + length].rstrip(b"\0")
+    except (struct.error, ValueError):
+        return None
     return None
 
 

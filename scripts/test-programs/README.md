@@ -46,3 +46,18 @@ llvm-objcopy -O binary -j .text nds7.elf nds7.bin
 The DS header carries no Nintendo logo bitmap and no encrypted secure
 area, so the ROM only runs through an emulator's direct boot (melonDS with
 FreeBIOS), not on real hardware or through the DS firmware menu.
+
+The PSP program is `psp.c` (boot counter in `ms0:/PSP/SAVEDATA/RWEB00001/COUNTER.BIN`,
+screen fill via `sceDisplaySetFrameBuf`), `psp-stubs.S` (firmware imports by
+NID, laid out like the PSP SDK's stub macros) and `psp.ld` (one flat segment
+at 0x08804000, the `.rodata.sceModuleInfo`, `.lib.ent` and `.lib.stub`
+sections PPSSPP's loader reads). `make-test-rom.py` wraps the ELF in a PBP
+with a PARAM.SFO. Built with clang:
+
+```bash
+clang --target=mipsel-none-elf -mcpu=mips2 -msoft-float -mno-abicalls -fno-pic -G0 -O1 \
+  -ffreestanding -nostdlib -fno-builtin -fno-stack-protector -c psp.c -o psp.o
+clang --target=mipsel-none-elf -mcpu=mips2 -msoft-float -mno-abicalls -fno-pic -c psp-stubs.S -o psp-stubs.o
+ld.lld -T psp.ld --build-id=none -z max-page-size=16 -o psp.elf psp.o psp-stubs.o
+llvm-strip --strip-all psp.elf -o psp-stripped.elf
+```
