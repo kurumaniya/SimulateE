@@ -1,0 +1,14 @@
+[Unit]
+Description=SimulateE (RetroWeb) API - uvicorn on 127.0.0.1:8010
+After=network.target
+
+[Service]
+WorkingDirectory=%h/simulatee/apps/api
+Environment=PYTHONIOENCODING=utf-8
+Environment=PYTHONUTF8=1
+ExecStart=%h/simulatee/apps/api/.venv/bin/uvicorn retroweb.main:app --host 127.0.0.1 --port 8010
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
