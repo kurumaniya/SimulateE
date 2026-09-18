@@ -54,8 +54,16 @@ class Settings(BaseSettings):
     screenshot_path: Path | None = None
 
     secret_key: str = "change-me"
+    # True: one implicit account, no login. False: accounts and sessions
+    # (the first visitor creates the admin account, which claims the implicit
+    # account's saves and play history).
     single_user_mode: bool = True
     default_username: str = "player"
+    # Multi-user mode: may anyone create an account, or only an admin?
+    allow_registration: bool = False
+    session_ttl_days: int = 30
+    # Set when the app is only ever reached over HTTPS.
+    session_cookie_secure: bool = False
 
     max_rom_upload_bytes: int = 2 * 1024 * 1024 * 1024
     max_save_upload_bytes: int = 64 * 1024 * 1024

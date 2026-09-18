@@ -21,6 +21,12 @@ export type ApiErrorCode =
   | "feature_disabled"
   | "metadata_unavailable"
   | "job_running"
+  | "unauthorized"
+  | "invalid_credentials"
+  | "forbidden"
+  | "username_taken"
+  | "setup_complete"
+  | "registration_closed"
   | "network_error"
   | "unknown";
 
@@ -96,7 +102,16 @@ export async function rawRequest(path: string, options: RequestOptions = {}): Pr
   } catch (error) {
     throw new ApiError("network_error", "The server could not be reached.", 0, error);
   }
-  if (!response.ok) throw await toApiError(response);
+  if (!response.ok) {
+    const error = await toApiError(response);
+    if (error.code === "unauthorized" && typeof window !== "undefined") {
+      // The login expired (or never existed): go to the sign-in page. A full
+      // navigation on purpose: it also drops every cached query of the old user.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
+    }
+    throw error;
+  }
   return response;
 }
 
@@ -121,6 +136,18 @@ export function describeError(error: unknown): { title: string; detail: string; 
         return { title: "Cover source unreachable", detail: "The thumbnail server could not be reached. Try again later.", code: error.code };
       case "job_running":
         return { title: "Already running", detail: error.message, code: error.code };
+      case "unauthorized":
+        return { title: "Sign in required", detail: "Your session has ended. Sign in again to continue.", code: error.code };
+      case "invalid_credentials":
+        return { title: "Sign-in failed", detail: error.message, code: error.code };
+      case "forbidden":
+        return { title: "Administrators only", detail: "Ask an administrator to do this for you.", code: error.code };
+      case "username_taken":
+        return { title: "Username taken", detail: "Pick another username.", code: error.code };
+      case "setup_complete":
+        return { title: "Already set up", detail: "The first account exists. Sign in instead.", code: error.code };
+      case "registration_closed":
+        return { title: "Registration closed", detail: "Ask an administrator for an account.", code: error.code };
       case "network_error":
         return { title: "Network disconnected", detail: "Check that the server is running and reachable.", code: error.code };
       case "not_found":

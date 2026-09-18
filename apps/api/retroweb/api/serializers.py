@@ -19,7 +19,7 @@ def game_summary(item: GameListItem) -> GameSummary:
         id=game.id,
         title=game.title,
         system=GameSystem(game.system),
-        favorite=game.favorite,
+        favorite=item.favorite,
         region=game.region,
         has_cover=game.cover_key is not None,
         rom_missing=game.any_file_missing,

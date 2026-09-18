@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from retroweb.core.config import Settings, get_settings
 from retroweb.core.database import get_session
+from retroweb.core.errors import ForbiddenError
 from retroweb.library.scanner import GameScanner
 from retroweb.models import User
 from retroweb.services.artwork import ArtworkFetcher
+from retroweb.services.auth import SESSION_COOKIE
 from retroweb.services.jobs import JobRunner
 from retroweb.services.users import current_user
 from retroweb.storage import StorageProvider
@@ -47,10 +49,21 @@ def jobs_dep(request: Request) -> JobRunner:
 
 
 def user_dep(
+    request: Request,
     db: Annotated[Session, Depends(db_dep)],
     settings: Annotated[Settings, Depends(settings_dep)],
 ) -> User:
-    return current_user(db, settings)
+    return current_user(db, settings, request.cookies.get(SESSION_COOKIE))
+
+
+def admin_dep(
+    user: Annotated[User, Depends(user_dep)],
+    settings: Annotated[Settings, Depends(settings_dep)],
+) -> User:
+    """Library management: everyone in single-user mode, admins otherwise."""
+    if not settings.single_user_mode and not user.is_admin:
+        raise ForbiddenError()
+    return user
 
 
 SettingsDep = Annotated[Settings, Depends(settings_dep)]
@@ -60,3 +73,4 @@ ScannerDep = Annotated[GameScanner, Depends(scanner_dep)]
 ArtworkDep = Annotated[ArtworkFetcher, Depends(artwork_dep)]
 JobsDep = Annotated[JobRunner, Depends(jobs_dep)]
 UserDep = Annotated[User, Depends(user_dep)]
+AdminDep = Annotated[User, Depends(admin_dep)]

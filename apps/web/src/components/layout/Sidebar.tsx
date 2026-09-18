@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { systemInfo } from "@retroweb/shared";
-import { useHome } from "@/lib/api/hooks";
+import { useAuthStatus, useHome, useLogout } from "@/lib/api/hooks";
 import { APP_NAME } from "@/lib/config";
 
 interface NavItem {
@@ -32,8 +32,11 @@ const primaryNav: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const search = useSearchParams();
   const { data: home } = useHome();
+  const { data: auth } = useAuthStatus();
+  const logout = useLogout();
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
@@ -93,6 +96,25 @@ export function Sidebar() {
             </span>
             Settings
           </Link>
+          {auth?.mode === "multi" && auth.user && (
+            <div className="flex items-center gap-3 px-3 py-2 text-sm">
+              <span className="w-4 text-center" aria-hidden>
+                👤
+              </span>
+              <span className="flex-1 truncate" title={auth.user.username}>
+                {auth.user.username}
+                {auth.user.is_admin && <span className="ml-1 text-[10px] uppercase text-muted">admin</span>}
+              </span>
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-fg"
+                disabled={logout.isPending}
+                onClick={() => logout.mutate(undefined, { onSuccess: () => router.replace("/login") })}
+              >
+                Log out
+              </button>
+            </div>
+          )}
         </div>
       </nav>
     </aside>

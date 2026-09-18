@@ -106,9 +106,12 @@ these headers (see README → Deployment).
 * **Logging** is `structlog`. Events: `rom.scan.*`, `game.launch`, `save.upload`,
   `save.download`, `emulator.selected`, `cover.*`, `job.*`, plus errors. Never
   logs secrets or save contents.
-* **Users**: Phase 1 runs in *single user mode*. A default user row is created
-  on startup and `get_current_user` returns it. The dependency is the only
-  place to change when authentication is added.
+* **Users**: `SINGLE_USER_MODE=true` (default) creates one implicit account
+  on startup and `user_dep` returns it. With accounts on, `user_dep` resolves
+  the `retroweb_session` cookie through `services/auth.py` (scrypt password
+  hashes, random session tokens stored hashed in `user_sessions`, sliding
+  expiry) and `admin_dep` guards library management. The first `/auth/setup`
+  claims the implicit account so its data carries over.
 * **Security**: every file the API serves is resolved from a database row
   (`GET /api/games/{id}/rom`), never from a client-provided path. The storage
   provider additionally rejects any key that escapes its root. Upload
@@ -118,10 +121,13 @@ these headers (see README → Deployment).
 ## 5. Database schema (Phase 1)
 
 ```
-users            id, username, password_hash (nullable), created_at
+users            id, username, password_hash (nullable), is_admin, created_at
+user_sessions    id, user_id, token_hash (unique), created_at, last_seen_at,
+                 expires_at, user_agent
+user_favorites   user_id, game_id, created_at            (PK user_id, game_id)
 games            id, title, title_en, title_ja, title_zh, system, cover_key,
                  developer, publisher, release_date, region, description,
-                 favorite, created_at, updated_at
+                 created_at, updated_at
 game_files       id, game_id, storage_key, filename, extension, size_bytes,
                  sha256 (unique), region, label, is_primary, role (primary|companion),
                  missing, created_at
@@ -346,3 +352,6 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | Background jobs | In-process thread + polled counters | Enough for one server process and a single user; a queue would add a dependency for no gain today |
 | Multi-disc sets | `.m3u` is the primary file; discs adopt the first disc's existing game | Keeps saves when a playlist is added later; RetroArch's disk control handles swapping so no RetroWeb-level disc UI is needed |
 | PS1 test content | Two-disc `.m3u` set | The same e2e test covers playlist grouping, disc count and the save round trip |
+| Password hashing | `hashlib.scrypt` (stdlib) | No new dependency; parameters are stored with the hash so they can be raised later |
+| Login sessions | Server-side table + opaque cookie token | Revocable (logout, account deletion), no signing key to rotate, works behind any proxy |
+| Favorites | `user_favorites` table, per account | A shared flag made no sense once several people use one library; the migration carries the old flag over |

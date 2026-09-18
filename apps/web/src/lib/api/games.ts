@@ -1,7 +1,10 @@
 import type {
+  AuthStatus,
+  Credentials,
   GameDetail,
   GameFile,
   SystemBiosOut,
+  UserOut,
   GameListQuery,
   GameListResponse,
   GameSystem,
@@ -115,6 +118,32 @@ export const sessionsApi = {
       json: { action: "end" },
     }),
   recent: (limit = 20) => request<RecentSessionOut[]>("/play-sessions/recent", { query: { limit } }),
+};
+
+export const authApi = {
+  status: () => request<AuthStatus>("/auth/status"),
+  setup: (credentials: Credentials) =>
+    request<UserOut>("/auth/setup", { method: "POST", json: credentials }),
+  register: (credentials: Credentials) =>
+    request<UserOut>("/auth/register", { method: "POST", json: credentials }),
+  login: (credentials: Credentials) =>
+    request<UserOut>("/auth/login", { method: "POST", json: credentials }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  me: () => request<UserOut>("/auth/me"),
+  changePassword: (current_password: string, new_password: string) =>
+    request<UserOut>("/auth/password", {
+      method: "PATCH",
+      json: { current_password, new_password },
+    }),
+};
+
+export const usersApi = {
+  list: () => request<UserOut[]>("/users"),
+  create: (fields: Credentials & { is_admin: boolean }) =>
+    request<UserOut>("/users", { method: "POST", json: fields }),
+  update: (id: string, changes: { password?: string; is_admin?: boolean }) =>
+    request<UserOut>(`/users/${encodeURIComponent(id)}`, { method: "PATCH", json: changes }),
+  remove: (id: string) => request<void>(`/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
 export const biosApi = {

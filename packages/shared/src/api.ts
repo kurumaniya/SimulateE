@@ -155,6 +155,28 @@ export interface RecentSessionOut {
   game: GameSummary;
 }
 
+export interface UserOut {
+  id: string;
+  username: string;
+  is_admin: boolean;
+  created_at: string;
+}
+
+/** Answer of GET /auth/status: what the client needs before rendering. */
+export interface AuthStatus {
+  /** "single": one implicit account, no login. "multi": accounts and sessions. */
+  mode: "single" | "multi";
+  /** Multi-user mode before the first (admin) account exists. */
+  setup_required: boolean;
+  registration_open: boolean;
+  user: UserOut | null;
+}
+
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
 /** A server-side background job (e.g. fetching covers for the whole library). */
 export interface JobOut {
   id: string;

@@ -28,7 +28,7 @@ class Game(IdMixin, TimestampMixin, Base):
     release_date: Mapped[date | None] = mapped_column(Date)
     region: Mapped[str | None] = mapped_column(String(64))
     description: Mapped[str | None] = mapped_column(Text)
-    favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Favorites are per user: see models.user.UserFavorite.
 
     files: Mapped[list[GameFile]] = relationship(
         back_populates="game", cascade="all, delete-orphan", order_by="GameFile.created_at"

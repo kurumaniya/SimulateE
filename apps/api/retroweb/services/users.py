@@ -1,4 +1,4 @@
-"""User lookup. Single-user mode returns the implicit default account."""
+"""User lookup: the implicit account in single-user mode, the login otherwise."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from retroweb.core.config import Settings
+from retroweb.core.errors import UnauthorizedError
 from retroweb.models import User
+from retroweb.services.auth import resolve_session
 
 
 def ensure_default_user(session: Session, settings: Settings) -> User:
@@ -18,12 +20,15 @@ def ensure_default_user(session: Session, settings: Settings) -> User:
     return user
 
 
-def current_user(session: Session, settings: Settings) -> User:
+def current_user(session: Session, settings: Settings, session_token: str | None) -> User:
     """Resolve the acting user.
 
-    Phase 1: single-user mode only. When authentication lands this is where a
-    session cookie is validated; callers never need to change.
+    Single-user mode returns the implicit account. Otherwise the request must
+    carry a valid login cookie (see ``services/auth.py``).
     """
-    if not settings.single_user_mode:
-        raise NotImplementedError("multi-user authentication is not implemented yet")
-    return ensure_default_user(session, settings)
+    if settings.single_user_mode:
+        return ensure_default_user(session, settings)
+    user = resolve_session(session, settings, session_token)
+    if user is None:
+        raise UnauthorizedError()
+    return user

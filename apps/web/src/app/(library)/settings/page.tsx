@@ -3,18 +3,23 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ALL_SYSTEMS, GameSystem } from "@retroweb/shared";
-import { useSystems, useUploadRom } from "@/lib/api/hooks";
+import { useAuthStatus, useIsAdmin, useSystems, useUploadRom } from "@/lib/api/hooks";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
 import { useBrowserCapabilities } from "@/lib/emulator/useBrowserCapabilities";
+import { AccountPanel } from "@/components/settings/AccountPanel";
 import { BiosPanel } from "@/components/settings/BiosPanel";
 import { CoverArtPanel } from "@/components/settings/CoverArtPanel";
 import { LibraryScanPanel } from "@/components/settings/LibraryScanPanel";
+import { UsersPanel } from "@/components/settings/UsersPanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { APP_NAME } from "@/lib/config";
 
 export default function SettingsPage() {
   const upload = useUploadRom();
+  const { data: auth } = useAuthStatus();
+  const isAdmin = useIsAdmin();
+  const multiUser = auth?.mode === "multi" && !!auth.user;
   const { data: systems } = useSystems();
   const [uploadSystem, setUploadSystem] = useState<GameSystem>(GameSystem.GBA);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -36,8 +41,19 @@ export default function SettingsPage() {
         <p className="text-sm text-muted">{APP_NAME} manages only the game files you provide.</p>
       </header>
 
-      <LibraryScanPanel />
+      {multiUser && auth.user && <AccountPanel username={auth.user.username} />}
+      {multiUser && isAdmin && auth.user && <UsersPanel selfId={auth.user.id} />}
 
+      {!isAdmin && (
+        <p className="rounded-xl border border-line bg-card p-5 text-sm text-muted">
+          Library management (scanning, uploads, BIOS files, cover art) is reserved for
+          administrators.
+        </p>
+      )}
+
+      {isAdmin && <LibraryScanPanel />}
+
+      {isAdmin && (
       <section className="space-y-3 rounded-xl border border-line bg-card p-5">
         <h2 className="font-semibold">Upload a ROM</h2>
         <p className="text-sm text-muted">
@@ -75,10 +91,11 @@ export default function SettingsPage() {
         </div>
         {upload.error ? <ErrorBanner error={upload.error} /> : null}
       </section>
+      )}
 
-      <CoverArtPanel />
+      {isAdmin && <CoverArtPanel />}
 
-      <BiosPanel />
+      {isAdmin && <BiosPanel />}
 
       <section className="space-y-3 rounded-xl border border-line bg-card p-5">
         <h2 className="font-semibold">Emulators</h2>

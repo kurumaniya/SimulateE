@@ -7,6 +7,7 @@ import {
   useDeleteSave,
   useFetchCover,
   useGame,
+  useIsAdmin,
   useSaves,
   useSystemBios,
   useToggleFavorite,
@@ -30,6 +31,7 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
   const uploadCover = useUploadCover();
   const fetchCover = useFetchCover();
   const deleteSave = useDeleteSave();
+  const isAdmin = useIsAdmin();
   const coverInput = useRef<HTMLInputElement>(null);
   const [coverError, setCoverError] = useState<unknown>(null);
 
@@ -72,26 +74,30 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
               e.target.value = "";
             }}
           />
-          <Button
-            variant="ghost"
-            className="w-full"
-            disabled={uploadCover.isPending}
-            onClick={() => coverInput.current?.click()}
-          >
-            {uploadCover.isPending ? "Uploading…" : game.has_cover ? "Replace cover" : "Upload cover"}
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full"
-            disabled={fetchCover.isPending || uploadCover.isPending}
-            title="Look the box art up in the libretro-thumbnails collection by file name"
-            onClick={() => {
-              setCoverError(null);
-              fetchCover.mutate({ id: game.id }, { onError: setCoverError });
-            }}
-          >
-            {fetchCover.isPending ? "Searching…" : "Fetch cover online"}
-          </Button>
+          {isAdmin && (
+            <>
+              <Button
+                variant="ghost"
+                className="w-full"
+                disabled={uploadCover.isPending}
+                onClick={() => coverInput.current?.click()}
+              >
+                {uploadCover.isPending ? "Uploading…" : game.has_cover ? "Replace cover" : "Upload cover"}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                disabled={fetchCover.isPending || uploadCover.isPending}
+                title="Look the box art up in the libretro-thumbnails collection by file name"
+                onClick={() => {
+                  setCoverError(null);
+                  fetchCover.mutate({ id: game.id }, { onError: setCoverError });
+                }}
+              >
+                {fetchCover.isPending ? "Searching…" : "Fetch cover online"}
+              </Button>
+            </>
+          )}
           {coverError ? <ErrorBanner error={coverError} /> : null}
         </div>
 

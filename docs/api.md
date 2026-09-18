@@ -12,6 +12,34 @@ Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 `invalid_storage_key`, `bios_missing`, `cover_not_found`, `feature_disabled`,
 `metadata_unavailable`, `job_running`.
 
+## Accounts
+
+Single-user mode (`SINGLE_USER_MODE=true`, the default): every request acts
+as the implicit account and the endpoints below answer 409 `feature_disabled`
+(except `GET /auth/status`). Multi-user mode: a login cookie
+(`retroweb_session`, HttpOnly) is required everywhere else; without one the
+API answers 401 `unauthorized`. Library management (scan, uploads, BIOS,
+cover art, metadata edits) and `/users` need an administrator, else 403
+`forbidden`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/auth/status` | `{ mode: single/multi, setup_required, registration_open, user }` — never fails |
+| POST | `/auth/setup` | First account (admin) → 201 + cookie; claims the implicit account. 409 `setup_complete` afterwards |
+| POST | `/auth/register` | Self-registration when `ALLOW_REGISTRATION=true`, else 403 `registration_closed` |
+| POST | `/auth/login` | `{ username, password }` → user + cookie. 401 `invalid_credentials` |
+| POST | `/auth/logout` | Revokes the session, clears the cookie |
+| GET | `/auth/me` | The signed-in user |
+| PATCH | `/auth/password` | `{ current_password, new_password }` |
+| GET | `/users` | Admin: all accounts |
+| POST | `/users` | Admin: `{ username, password, is_admin }` |
+| PATCH | `/users/{id}` | Admin: `{ password?, is_admin? }` (not your own admin role) |
+| DELETE | `/users/{id}` | Admin: remove an account and its saves (not yourself) |
+
+Usernames: 2–32 characters of letters, digits, `.`, `_`, `-`; passwords at
+least 8 characters. Error codes: `unauthorized`, `invalid_credentials`,
+`forbidden`, `username_taken`, `setup_complete`, `registration_closed`.
+
 ## Systems
 
 | Method | Path | Description |

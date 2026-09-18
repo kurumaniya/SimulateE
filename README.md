@@ -32,6 +32,7 @@ Open it on another device and resume.
 - Cover art fetched on request from the libretro-thumbnails collection, per game or for the whole library (background job with progress)
 - Range-capable ROM streaming (no base64, no whole-file buffering)
 - Storage abstraction (`StorageProvider`) with a local filesystem provider
+- Optional accounts: single implicit user by default, or sign-in with per-user saves, play time and favorites, admin-managed library and users
 - Docker Compose deployment (SQLite by default, PostgreSQL override)
 
 ## Supported systems
@@ -192,6 +193,24 @@ downloaded. Set `ONLINE_METADATA=false` to disable it, or
 
 See [docs/architecture.md → Save architecture](docs/architecture.md#8-save-architecture).
 
+## Accounts
+
+By default RetroWeb runs in **single-user mode**: one implicit account, no
+login. Set `SINGLE_USER_MODE=false` to enable accounts:
+
+- The first visitor creates the **administrator** account at `/login`. It
+  takes over the implicit account, so saves, play time and favorites made
+  before the switch stay with it.
+- Administrators manage the library (scan, uploads, BIOS files, cover art)
+  and accounts (**Settings → Users**). Everyone else plays: saves, play
+  time and favorites are per account; the game library is shared.
+- Accounts are created by an administrator unless `ALLOW_REGISTRATION=true`.
+- Logins are HttpOnly cookies backed by a server-side session table
+  (`SESSION_TTL_DAYS`, sliding). Set `SESSION_COOKIE_SECURE=true` when the
+  app is only reached over HTTPS. Passwords are hashed with scrypt.
+- There is no rate limiting on sign-in; keep a reverse-proxy gate (Basic
+  auth, VPN) in front of a public deployment.
+
 ## Deployment notes
 
 The web app sends `Cross-Origin-Opener-Policy: same-origin` and
@@ -202,7 +221,6 @@ headers. Configuration is done through `.env` (see `.env.example`).
 
 ## Known limitations
 
-- Single implicit user; no login yet (the `User` model and dependency are in place).
 - Closing the browser tab without pressing **Quit** relies on the periodic save
   sync (every 60 s) and a best-effort flush when the tab is hidden; the
   automatic resume point is only captured by Quit.
@@ -240,6 +258,7 @@ libretro-thumbnails collection, whose contents are maintained by that project.
 6. ~~Phase 6 — Cover art from libretro-thumbnails (per game + library-wide background job)~~ done
 7. ~~Phase 7 — Background scan with progress, `.m3u` multi-disc sets, GB/GBC boot ROMs and FDS BIOS wired~~ done
 8. ~~Phase 8 — Touch: on-screen controls verified, toolbar reachable by tap, Controls button for remapping~~ done
-9. Later — multi-user accounts; Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions
+9. ~~Phase 9 — Accounts: sign-in, admin role, per-user saves and favorites~~ done
+10. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

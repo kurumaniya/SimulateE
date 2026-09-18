@@ -100,3 +100,45 @@ class FeatureDisabledError(AppError):
 
     status_code = 409
     code = "feature_disabled"
+
+
+class UnauthorizedError(AppError):
+    """Sign in to continue."""
+
+    status_code = 401
+    code = "unauthorized"
+
+
+class InvalidCredentialsError(AppError):
+    """Wrong username or password."""
+
+    status_code = 401
+    code = "invalid_credentials"
+
+
+class ForbiddenError(AppError):
+    """Only an administrator can do this."""
+
+    status_code = 403
+    code = "forbidden"
+
+
+class UsernameTakenError(AppError):
+    """That username is already in use."""
+
+    status_code = 409
+    code = "username_taken"
+
+
+class SetupCompleteError(AppError):
+    """The first account already exists; sign in instead."""
+
+    status_code = 409
+    code = "setup_complete"
+
+
+class RegistrationClosedError(AppError):
+    """Accounts are created by an administrator."""
+
+    status_code = 403
+    code = "registration_closed"

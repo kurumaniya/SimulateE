@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Response, UploadFile
 
-from retroweb.api.deps import StorageDep, UserDep
+from retroweb.api.deps import AdminDep, StorageDep, UserDep
 from retroweb.api.uploads import read_bounded
 from retroweb.library.bios import MAX_BIOS_BYTES
 from retroweb.library.systems import GameSystem
@@ -59,7 +59,7 @@ def system_bios(system: GameSystem, storage: StorageDep, _user: UserDep) -> Syst
 def upload_bios(
     system: GameSystem,
     storage: StorageDep,
-    _user: UserDep,
+    _admin: AdminDep,
     file: Annotated[UploadFile, File()],
 ) -> SystemBiosOut:
     bios_service.system_status(storage, system)  # 404 for systems without BIOS
@@ -85,6 +85,8 @@ def download_bios(
 
 
 @router.delete("/{system}/{filename}", status_code=204)
-def delete_bios(system: GameSystem, filename: str, storage: StorageDep, _user: UserDep) -> Response:
+def delete_bios(
+    system: GameSystem, filename: str, storage: StorageDep, _admin: AdminDep
+) -> Response:
     bios_service.remove(storage, system, filename)
     return Response(status_code=204)

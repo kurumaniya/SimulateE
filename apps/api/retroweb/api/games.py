@@ -9,7 +9,15 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
-from retroweb.api.deps import ArtworkDep, DbDep, ScannerDep, SettingsDep, StorageDep, UserDep
+from retroweb.api.deps import (
+    AdminDep,
+    ArtworkDep,
+    DbDep,
+    ScannerDep,
+    SettingsDep,
+    StorageDep,
+    UserDep,
+)
 from retroweb.api.ranges import UnsatisfiableRangeError, parse_range
 from retroweb.api.serializers import game_detail, game_summary
 from retroweb.api.uploads import read_bounded, spool_bounded
@@ -64,7 +72,7 @@ def list_games(
 
 
 @router.post("/scan", response_model=ScanResponse)
-def scan_library(db: DbDep, scanner: ScannerDep, _user: UserDep) -> ScanResponse:
+def scan_library(db: DbDep, scanner: ScannerDep, _admin: AdminDep) -> ScanResponse:
     result = scanner.scan_directory(db)
     return ScanResponse(**result.as_dict())
 
@@ -72,7 +80,7 @@ def scan_library(db: DbDep, scanner: ScannerDep, _user: UserDep) -> ScanResponse
 @router.post("/upload", response_model=GameDetail, status_code=201)
 def upload_rom(
     db: DbDep,
-    user: UserDep,
+    user: AdminDep,
     storage: StorageDep,
     scanner: ScannerDep,
     settings: SettingsDep,
@@ -115,7 +123,7 @@ def get_game(game_id: str, db: DbDep, user: UserDep) -> GameDetail:
 
 
 @router.patch("/{game_id}", response_model=GameDetail)
-def update_game(game_id: str, payload: GameUpdate, db: DbDep, user: UserDep) -> GameDetail:
+def update_game(game_id: str, payload: GameUpdate, db: DbDep, user: AdminDep) -> GameDetail:
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise ValidationError("No fields to update")
@@ -125,7 +133,7 @@ def update_game(game_id: str, payload: GameUpdate, db: DbDep, user: UserDep) -> 
 
 @router.post("/{game_id}/favorite", response_model=GameDetail)
 def set_favorite(game_id: str, payload: FavoriteRequest, db: DbDep, user: UserDep) -> GameDetail:
-    game_service.set_favorite(db, game_id, payload.favorite)
+    game_service.set_favorite(db, user, game_id, payload.favorite)
     return game_detail(game_service.get_game_item(db, user, game_id))
 
 
@@ -259,7 +267,7 @@ def get_cover(game_id: str, db: DbDep, storage: StorageDep) -> Response:
 
 @router.post("/{game_id}/cover/fetch", response_model=GameDetail)
 def fetch_cover_online(
-    game_id: str, db: DbDep, user: UserDep, storage: StorageDep, artwork: ArtworkDep
+    game_id: str, db: DbDep, user: AdminDep, storage: StorageDep, artwork: ArtworkDep
 ) -> GameDetail:
     """Look the cover up in the libretro-thumbnails collection, replacing any existing one."""
     if not artwork.enabled:
@@ -274,7 +282,7 @@ def fetch_cover_online(
 def upload_cover(
     game_id: str,
     db: DbDep,
-    user: UserDep,
+    user: AdminDep,
     storage: StorageDep,
     settings: SettingsDep,
     file: Annotated[UploadFile, File()],

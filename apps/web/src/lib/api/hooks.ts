@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GameListQuery, GameSystem, GameUpdate } from "@retroweb/shared";
-import { biosApi, gamesApi, libraryApi, savesApi, sessionsApi } from "./games";
+import type { Credentials, GameListQuery, GameSystem, GameUpdate } from "@retroweb/shared";
+import { authApi, biosApi, gamesApi, libraryApi, savesApi, sessionsApi, usersApi } from "./games";
 
 export const queryKeys = {
+  auth: ["auth"] as const,
+  users: ["users"] as const,
   home: ["home"] as const,
   games: (query: GameListQuery) => ["games", query] as const,
   game: (id: string) => ["game", id] as const,
@@ -15,6 +17,85 @@ export const queryKeys = {
   recent: ["recent-sessions"] as const,
   job: (id: string) => ["job", id] as const,
 };
+
+// -- accounts ---------------------------------------------------------------
+
+export function useAuthStatus() {
+  return useQuery({ queryKey: queryKeys.auth, queryFn: authApi.status, staleTime: 60_000 });
+}
+
+/** True when the signed-in user may manage the library (always in single-user mode). */
+export function useIsAdmin(): boolean {
+  const { data } = useAuthStatus();
+  return !data || data.mode === "single" || !!data.user?.is_admin;
+}
+
+function useAfterSignIn() {
+  const client = useQueryClient();
+  return async () => {
+    // Everything cached belongs to whoever was signed in before.
+    client.clear();
+    await client.invalidateQueries({ queryKey: queryKeys.auth });
+  };
+}
+
+export function useLogin() {
+  const after = useAfterSignIn();
+  return useMutation({ mutationFn: (c: Credentials) => authApi.login(c), onSuccess: after });
+}
+
+export function useSetup() {
+  const after = useAfterSignIn();
+  return useMutation({ mutationFn: (c: Credentials) => authApi.setup(c), onSuccess: after });
+}
+
+export function useRegister() {
+  const after = useAfterSignIn();
+  return useMutation({ mutationFn: (c: Credentials) => authApi.register(c), onSuccess: after });
+}
+
+export function useLogout() {
+  const after = useAfterSignIn();
+  return useMutation({ mutationFn: authApi.logout, onSuccess: after });
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: ({ current, next }: { current: string; next: string }) =>
+      authApi.changePassword(current, next),
+  });
+}
+
+export function useUsers(enabled = true) {
+  return useQuery({ queryKey: queryKeys.users, queryFn: usersApi.list, enabled });
+}
+
+export function useCreateUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: usersApi.create,
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+}
+
+export function useUpdateUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, changes }: { id: string; changes: { password?: string; is_admin?: boolean } }) =>
+      usersApi.update(id, changes),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+}
+
+export function useDeleteUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => usersApi.remove(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.users }),
+  });
+}
+
+// -- library ----------------------------------------------------------------
 
 export function useHome() {
   return useQuery({ queryKey: queryKeys.home, queryFn: libraryApi.home });

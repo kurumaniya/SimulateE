@@ -12,7 +12,16 @@ from sqlalchemy.orm import Session, selectinload
 from retroweb.core.errors import NotFoundError
 from retroweb.core.logging import get_logger
 from retroweb.library.systems import GameSystem
-from retroweb.models import AUTO_STATE_SLOT, Game, GameFile, GameSave, PlaySession, SaveType, User
+from retroweb.models import (
+    AUTO_STATE_SLOT,
+    Game,
+    GameFile,
+    GameSave,
+    PlaySession,
+    SaveType,
+    User,
+    UserFavorite,
+)
 
 log = get_logger(__name__)
 
@@ -25,6 +34,7 @@ class GameListItem:
     play_time_seconds: int
     last_played_at: datetime | None
     has_auto_state: bool
+    favorite: bool = False
 
 
 def get_game(db: Session, game_id: str) -> Game:
@@ -59,6 +69,14 @@ def _auto_state_subquery(user: User):  # type: ignore[no-untyped-def]
     )
 
 
+def _favorite_subquery(user: User):  # type: ignore[no-untyped-def]
+    return (
+        select(UserFavorite.game_id.label("game_id"))
+        .where(UserFavorite.user_id == user.id)
+        .subquery()
+    )
+
+
 def list_games(
     db: Session,
     user: User,
@@ -74,11 +92,13 @@ def list_games(
 ) -> tuple[list[GameListItem], int]:
     stats = _stats_subquery(user)
     auto = _auto_state_subquery(user)
+    fav = _favorite_subquery(user)
     stmt = (
-        select(Game, stats.c.play_time, stats.c.last_played, auto.c.game_id)
+        select(Game, stats.c.play_time, stats.c.last_played, auto.c.game_id, fav.c.game_id)
         .options(selectinload(Game.files))
         .outerjoin(stats, stats.c.game_id == Game.id)
         .outerjoin(auto, auto.c.game_id == Game.id)
+        .outerjoin(fav, fav.c.game_id == Game.id)
     )
     if query:
         needle = f"%{query.strip()}%"
@@ -92,8 +112,10 @@ def list_games(
         )
     if system is not None:
         stmt = stmt.where(Game.system == system.value)
-    if favorite is not None:
-        stmt = stmt.where(Game.favorite.is_(favorite))
+    if favorite is True:
+        stmt = stmt.where(fav.c.game_id.is_not(None))
+    elif favorite is False:
+        stmt = stmt.where(fav.c.game_id.is_(None))
     if only_played:
         stmt = stmt.where(stats.c.last_played.is_not(None))
     if only_with_auto_state:
@@ -118,8 +140,9 @@ def list_games(
             play_time_seconds=int(play_time or 0),
             last_played_at=last_played,
             has_auto_state=auto_id is not None,
+            favorite=fav_id is not None,
         )
-        for game, play_time, last_played, auto_id in db.execute(stmt).all()
+        for game, play_time, last_played, auto_id, fav_id in db.execute(stmt).all()
     ]
     return items, total
 
@@ -143,17 +166,23 @@ def get_game_item(db: Session, user: User, game_id: str) -> GameListItem:
         )
         is not None
     )
+    favorite = db.get(UserFavorite, (user.id, game_id)) is not None
     return GameListItem(
         game=game,
         play_time_seconds=int(stats[0] or 0),
         last_played_at=stats[1],
         has_auto_state=has_auto,
+        favorite=favorite,
     )
 
 
-def set_favorite(db: Session, game_id: str, favorite: bool) -> Game:
+def set_favorite(db: Session, user: User, game_id: str, favorite: bool) -> Game:
     game = get_game(db, game_id)
-    game.favorite = favorite
+    row = db.get(UserFavorite, (user.id, game_id))
+    if favorite and row is None:
+        db.add(UserFavorite(user_id=user.id, game_id=game_id))
+    elif not favorite and row is not None:
+        db.delete(row)
     db.commit()
     return game
 

@@ -4,10 +4,19 @@ import { use } from "react";
 import Link from "next/link";
 import { useGame } from "@/lib/api/hooks";
 import { EmulatorPlayer } from "@/components/player/EmulatorPlayer";
+import { AuthGate } from "@/components/auth/AuthGate";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Button } from "@/components/ui/Button";
 
 export default function PlayPage(props: PageProps<"/play/[id]">) {
+  return (
+    <AuthGate>
+      <PlayContent {...props} />
+    </AuthGate>
+  );
+}
+
+function PlayContent(props: PageProps<"/play/[id]">) {
   const { id } = use(props.params);
   const search = use(props.searchParams);
   const resume = search.resume === "1" || search.resume === "true";

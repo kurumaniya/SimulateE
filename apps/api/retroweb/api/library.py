@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from retroweb.api.deps import ArtworkDep, DbDep, JobsDep, ScannerDep, StorageDep, UserDep
+from retroweb.api.deps import (
+    AdminDep,
+    ArtworkDep,
+    DbDep,
+    JobsDep,
+    ScannerDep,
+    StorageDep,
+    UserDep,
+)
 from retroweb.api.serializers import game_summary, job_out
 from retroweb.core.errors import FeatureDisabledError, NotFoundError
 from retroweb.library.systems import ADAPTER_SUPPORTED_SYSTEMS, SYSTEMS, GameSystem
@@ -20,7 +28,7 @@ HOME_SECTION_LIMIT = 12
 
 
 @router.post("/library/scan", response_model=JobOut, status_code=202)
-def scan_library_async(scanner: ScannerDep, jobs: JobsDep, _user: UserDep) -> JobOut:
+def scan_library_async(scanner: ScannerDep, jobs: JobsDep, _admin: AdminDep) -> JobOut:
     """Scan the ROM directory in the background; poll the job for progress and counts."""
     job = jobs.start(
         scan_service.LIBRARY_SCAN_JOB, lambda job: scan_service.scan_library_job(job, scanner)
@@ -30,7 +38,7 @@ def scan_library_async(scanner: ScannerDep, jobs: JobsDep, _user: UserDep) -> Jo
 
 @router.post("/library/covers/fetch", response_model=JobOut, status_code=202)
 def fetch_missing_covers(
-    storage: StorageDep, artwork: ArtworkDep, jobs: JobsDep, _user: UserDep
+    storage: StorageDep, artwork: ArtworkDep, jobs: JobsDep, _admin: AdminDep
 ) -> JobOut:
     """Start a background job that fetches a cover for every game without one."""
     if not artwork.enabled:
