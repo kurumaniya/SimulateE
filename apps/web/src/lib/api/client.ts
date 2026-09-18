@@ -15,6 +15,8 @@ export type ApiErrorCode =
   | "session_not_found"
   | "session_already_ended"
   | "storage_error"
+  | "invalid_storage_key"
+  | "bios_missing"
   | "network_error"
   | "unknown";
 
@@ -105,6 +107,8 @@ export function describeError(error: unknown): { title: string; detail: string; 
         return { title: "File too large", detail: error.message, code: error.code };
       case "duplicate_rom":
         return { title: "Already in library", detail: error.message, code: error.code };
+      case "bios_missing":
+        return { title: "BIOS required", detail: "Upload the BIOS file for this system in Settings.", code: error.code };
       case "network_error":
         return { title: "Network disconnected", detail: "Check that the server is running and reachable.", code: error.code };
       case "not_found":

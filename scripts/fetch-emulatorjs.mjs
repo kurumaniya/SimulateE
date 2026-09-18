@@ -31,8 +31,15 @@ async function download(url, dest) {
 }
 
 function extract(tarball, into) {
+  // Relative paths from a shared cwd: GNU tar (Git Bash on Windows) would read
+  // an absolute `C:\...` as a remote host name.
+  const cwd = path.dirname(tarball);
   return new Promise((resolve, reject) => {
-    const child = spawn("tar", ["-xzf", tarball, "-C", into], { stdio: "inherit" });
+    const child = spawn(
+      "tar",
+      ["-xzf", path.basename(tarball), "-C", path.relative(cwd, into) || "."],
+      { stdio: "inherit", cwd },
+    );
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`tar exited ${code}`))));
     child.on("error", reject);
   });

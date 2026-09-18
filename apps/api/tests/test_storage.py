@@ -32,7 +32,10 @@ def test_symlink_escape_rejected(tmp_path: Path) -> None:
     root.mkdir()
     outside.mkdir()
     (outside / "secret.txt").write_text("nope")
-    (root / "link").symlink_to(outside)
+    try:
+        (root / "link").symlink_to(outside)
+    except OSError as exc:  # Windows needs a privilege or Developer Mode for symlinks
+        pytest.skip(f"cannot create symlinks here: {exc}")
     provider = LocalStorageProvider(root)
     with pytest.raises(InvalidStorageKeyError):
         provider.read("link/secret.txt")

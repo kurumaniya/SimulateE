@@ -89,7 +89,9 @@ export const SYSTEMS: Record<GameSystem, SystemInfo> = {
     name: "PlayStation",
     shortName: "PS1",
     manufacturer: "Sony",
-    extensions: [".cue", ".chd", ".pbp", ".bin", ".iso"],
+    // Mirrors the backend registry: what the EmulatorJS PCSX-ReARMed build
+    // can open. .chd and .iso are deliberately absent.
+    extensions: [".cue", ".pbp", ".m3u", ".ccd", ".img", ".bin"],
     accent: "#9aa4b2",
   },
   [GameSystem.PSP]: {
