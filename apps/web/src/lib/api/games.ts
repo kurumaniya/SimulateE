@@ -7,6 +7,7 @@ import type {
   GameSystem,
   GameUpdate,
   HomeResponse,
+  JobOut,
   PlaySessionOut,
   RecentSessionOut,
   SaveOut,
@@ -40,6 +41,9 @@ export const gamesApi = {
     body.append("file", file, file.name);
     return request<GameDetail>(`/games/${encodeURIComponent(id)}/cover`, { method: "PUT", body });
   },
+  /** Look the cover up in the libretro-thumbnails collection (replaces any existing one). */
+  fetchCover: (id: string) =>
+    request<GameDetail>(`/games/${encodeURIComponent(id)}/cover/fetch`, { method: "POST" }),
   coverUrl: (game: { id: string; has_cover: boolean; updated_at?: string }) =>
     game.has_cover
       ? buildUrl(`/games/${encodeURIComponent(game.id)}/cover`, { v: game.updated_at })
@@ -58,6 +62,10 @@ export const gamesApi = {
 export const libraryApi = {
   home: () => request<HomeResponse>("/library/home"),
   systems: () => request<SystemOut[]>("/systems"),
+  /** Start a background job fetching a cover for every game without one. */
+  fetchCovers: () => request<JobOut>("/library/covers/fetch", { method: "POST" }),
+  job: (id: string) => request<JobOut>(`/library/jobs/${encodeURIComponent(id)}`),
+  jobs: () => request<JobOut[]>("/library/jobs"),
 };
 
 export const savesApi = {

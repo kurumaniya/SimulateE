@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # How often the client is expected to send heartbeats.
     session_heartbeat_interval_seconds: int = 30
 
+    # Cover art from the libretro-thumbnails collection, fetched on request.
+    # Never games or BIOS images: only box art looked up by the ROM file name.
+    online_metadata: bool = True
+    thumbnails_base_url: str = "https://thumbnails.libretro.com"
+    thumbnails_timeout_seconds: float = 20.0
+
     log_format: Literal["console", "json"] = "console"
     log_level: str = "INFO"
 

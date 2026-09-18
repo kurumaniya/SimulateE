@@ -7,6 +7,7 @@ import { useScanLibrary, useSystems, useUploadRom } from "@/lib/api/hooks";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
 import { useBrowserCapabilities } from "@/lib/emulator/useBrowserCapabilities";
 import { BiosPanel } from "@/components/settings/BiosPanel";
+import { CoverArtPanel } from "@/components/settings/CoverArtPanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { APP_NAME } from "@/lib/config";
@@ -105,6 +106,8 @@ export default function SettingsPage() {
         </div>
         {upload.error ? <ErrorBanner error={upload.error} /> : null}
       </section>
+
+      <CoverArtPanel />
 
       <BiosPanel />
 

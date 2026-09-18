@@ -20,6 +20,8 @@ from retroweb.core.database import get_session, init_engine
 from retroweb.core.errors import AppError
 from retroweb.core.logging import configure_logging, get_logger
 from retroweb.library.scanner import GameScanner
+from retroweb.services.artwork import ArtworkFetcher
+from retroweb.services.jobs import JobRunner
 from retroweb.services.users import ensure_default_user
 from retroweb.storage import InvalidStorageKeyError, build_storage
 
@@ -45,10 +47,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         run_migrations(settings)
         app.state.storage = build_storage(settings)
         app.state.scanner = GameScanner(app.state.storage)
+        app.state.artwork = ArtworkFetcher(settings)
+        app.state.jobs = JobRunner()
         for session in get_session():
             ensure_default_user(session, settings)
         log.info("app.started", app=settings.app_name, version=__version__)
         yield
+        app.state.artwork.close()
 
     app = FastAPI(title=f"{settings.app_name} API", version=__version__, lifespan=lifespan)
     app.add_middleware(

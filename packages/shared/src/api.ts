@@ -155,6 +155,21 @@ export interface RecentSessionOut {
   game: GameSummary;
 }
 
+/** A server-side background job (e.g. fetching covers for the whole library). */
+export interface JobOut {
+  id: string;
+  kind: string;
+  status: "queued" | "running" | "done" | "failed";
+  total: number;
+  done: number;
+  /** Outcome counts, e.g. { fetched, not_found, skipped, failed }. */
+  counters: Record<string, number>;
+  errors: string[];
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface ApiErrorBody {
   error: {
     code: string;

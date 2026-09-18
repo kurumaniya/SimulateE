@@ -6,9 +6,11 @@ from retroweb.core.config import Settings
 from retroweb.library.systems import GameSystem
 from retroweb.models import GameSave, PlaySession
 from retroweb.schemas.games import GameDetail, GameFileOut, GameSummary
+from retroweb.schemas.jobs import JobOut
 from retroweb.schemas.saves import SaveOut
 from retroweb.schemas.sessions import PlaySessionOut
 from retroweb.services.games import GameListItem
+from retroweb.services.jobs import Job
 
 
 def game_summary(item: GameListItem) -> GameSummary:
@@ -63,6 +65,21 @@ def save_out(row: GameSave) -> SaveOut:
         client_modified_at=row.client_modified_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def job_out(job: Job) -> JobOut:
+    return JobOut(
+        id=job.id,
+        kind=job.kind,
+        status=job.status,
+        total=job.total,
+        done=job.done,
+        counters=dict(job.counters),
+        errors=list(job.errors),
+        created_at=job.created_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
     )
 
 

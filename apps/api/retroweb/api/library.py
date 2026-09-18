@@ -4,15 +4,45 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from retroweb.api.deps import DbDep, UserDep
-from retroweb.api.serializers import game_summary
+from retroweb.api.deps import ArtworkDep, DbDep, JobsDep, StorageDep, UserDep
+from retroweb.api.serializers import game_summary, job_out
+from retroweb.core.errors import FeatureDisabledError, NotFoundError
 from retroweb.library.systems import ADAPTER_SUPPORTED_SYSTEMS, SYSTEMS, GameSystem
 from retroweb.schemas.games import HomeResponse, PlatformSummary, SystemOut
+from retroweb.schemas.jobs import JobOut
+from retroweb.services import artwork as artwork_service
 from retroweb.services import games as game_service
 
 router = APIRouter(tags=["library"])
 
 HOME_SECTION_LIMIT = 12
+
+
+@router.post("/library/covers/fetch", response_model=JobOut, status_code=202)
+def fetch_missing_covers(
+    storage: StorageDep, artwork: ArtworkDep, jobs: JobsDep, _user: UserDep
+) -> JobOut:
+    """Start a background job that fetches a cover for every game without one."""
+    if not artwork.enabled:
+        raise FeatureDisabledError("Online cover art is disabled (ONLINE_METADATA=false)")
+    job = jobs.start(
+        artwork_service.COVER_FETCH_JOB,
+        lambda job: artwork_service.fetch_missing_covers(job, storage, artwork),
+    )
+    return job_out(job)
+
+
+@router.get("/library/jobs", response_model=list[JobOut])
+def list_jobs(jobs: JobsDep, _user: UserDep) -> list[JobOut]:
+    return [job_out(job) for job in jobs.list()]
+
+
+@router.get("/library/jobs/{job_id}", response_model=JobOut)
+def get_job(job_id: str, jobs: JobsDep, _user: UserDep) -> JobOut:
+    job = jobs.get(job_id)
+    if job is None:
+        raise NotFoundError("Job not found")
+    return job_out(job)
 
 
 @router.get("/library/home", response_model=HomeResponse)

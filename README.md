@@ -29,6 +29,7 @@ Open it on another device and resume.
 - Automatic "Resume" save state captured on quit
 - Play sessions with server-side play time
 - ROM upload and cover upload from the Settings / game pages
+- Cover art fetched on request from the libretro-thumbnails collection, per game or for the whole library (background job with progress)
 - Range-capable ROM streaming (no base64, no whole-file buffering)
 - Storage abstraction (`StorageProvider`) with a local filesystem provider
 - Docker Compose deployment (SQLite by default, PostgreSQL override)
@@ -143,8 +144,9 @@ files are skipped, moved files are re-linked by hash, removed files are
 flagged as missing. You can also upload a ROM from the Settings page.
 
 Filenames in No-Intro style (`Title (Region).gba`) are parsed for the title and
-region. Cover art can be uploaded on the game page; a placeholder is shown
-otherwise. Online metadata providers are planned (`MetadataProvider` interface).
+region. Cover art can be uploaded on the game page or fetched online (see
+[Cover art](#cover-art)); a placeholder is shown otherwise. Online metadata
+for titles and descriptions is planned (`MetadataProvider` interface).
 
 ## BIOS setup
 
@@ -165,6 +167,17 @@ MD5; an unknown digest is kept but flagged.
   uploader but not yet passed to the emulator.
 
 RetroWeb never downloads BIOS files.
+
+## Cover art
+
+Box art comes from the [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
+collection, looked up by the ROM's file name (No-Intro / Redump style names
+match best; when the exact name is missing, the closest entry with the same
+title and region is used). Nothing is fetched automatically: press **Fetch
+cover online** on a game page, or **Settings → Cover art → Fetch missing
+covers** to run a background job over the whole library. Only images are
+downloaded. Set `ONLINE_METADATA=false` to disable it, or
+`THUMBNAILS_BASE_URL` to point at a mirror.
 
 ## Save system
 
@@ -215,7 +228,8 @@ RetroWeb bundles no games and no BIOS images. It only catalogs and runs files
 that you place in your own data directory or upload yourself. You are
 responsible for owning the games you play. The included EmulatorJS runtime and
 libretro cores are distributed under their own licenses (GPL-3.0 and others);
-see their repositories.
+see their repositories. Cover images are fetched, on request, from the
+libretro-thumbnails collection, whose contents are maintained by that project.
 
 ## Roadmap
 
@@ -224,6 +238,7 @@ see their repositories.
 3. ~~Phase 3 — BIOS upload, PlayStation, Nintendo 64~~ done
 4. ~~Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)~~ done
 5. ~~Phase 5 — PSP (PPSSPP, threads)~~ done
-6. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online metadata; multi-user accounts; input remapping UI
+6. ~~Phase 6 — Cover art from libretro-thumbnails (per game + library-wide background job)~~ done
+7. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions; multi-user accounts; input remapping UI
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

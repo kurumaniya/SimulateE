@@ -9,7 +9,8 @@ Base path: `/api`. All responses are JSON unless noted. Errors use
 Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 `invalid_filename`, `file_too_large`, `duplicate_rom`, `save_not_found`,
 `session_not_found`, `session_already_ended`, `storage_error`,
-`invalid_storage_key`.
+`invalid_storage_key`, `bios_missing`, `cover_not_found`, `feature_disabled`,
+`metadata_unavailable`, `job_running`.
 
 ## Systems
 
@@ -33,7 +34,18 @@ Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 | GET | `/games/{id}/files/{file_id}/{filename}` | Any file of a multi-file game (cue tracks). Same streaming/Range behaviour as `/rom`; `filename` must match |
 | GET | `/games/{id}/cover` | Cover image or 404 |
 | PUT | `/games/{id}/cover` | Multipart `file` (png/jpg/webp, size limited) |
+| POST | `/games/{id}/cover/fetch` | Look the box art up in libretro-thumbnails by file name and store it (replaces an existing cover). 404 `cover_not_found`, 409 `feature_disabled`, 502 `metadata_unavailable` |
 | GET | `/library/home` | Sections for the home page: `continue_playing`, `recently_played`, `recently_added`, `favorites`, `platforms` |
+
+## Cover art jobs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/library/covers/fetch` | Start a background job fetching a cover for every game without one → 202 + job. 409 `job_running` while one is active, 409 `feature_disabled` when `ONLINE_METADATA=false` |
+| GET | `/library/jobs` | Recent jobs, newest first |
+| GET | `/library/jobs/{id}` | `{ id, kind, status (queued/running/done/failed), total, done, counters: { fetched, not_found, skipped, failed }, errors, created_at, started_at, finished_at }` |
+
+Jobs live in the API process's memory; they are not persisted across restarts.
 
 ## Saves
 

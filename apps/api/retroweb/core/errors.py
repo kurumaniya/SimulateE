@@ -86,3 +86,17 @@ class BiosMissingError(AppError):
 
     status_code = 404
     code = "bios_missing"
+
+
+class CoverNotFoundError(AppError):
+    """No cover art matching this game's file name exists in the online collection."""
+
+    status_code = 404
+    code = "cover_not_found"
+
+
+class FeatureDisabledError(AppError):
+    """This feature is switched off in the server configuration."""
+
+    status_code = 409
+    code = "feature_disabled"

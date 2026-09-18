@@ -13,6 +13,7 @@ export const queryKeys = {
   bios: ["bios"] as const,
   biosFor: (system: GameSystem) => ["bios", system] as const,
   recent: ["recent-sessions"] as const,
+  job: (id: string) => ["job", id] as const,
 };
 
 export function useHome() {
@@ -44,7 +45,7 @@ export function useRecentSessions() {
 }
 
 /** Invalidate everything that shows library state after a mutation. */
-function useInvalidateLibrary() {
+export function useInvalidateLibrary() {
   const client = useQueryClient();
   return async (gameId?: string) => {
     await Promise.all([
@@ -92,6 +93,31 @@ export function useUploadCover() {
   return useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) => gamesApi.uploadCover(id, file),
     onSuccess: (game) => invalidate(game.id),
+  });
+}
+
+export function useFetchCover() {
+  const invalidate = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => gamesApi.fetchCover(id),
+    onSuccess: (game) => invalidate(game.id),
+  });
+}
+
+export function useFetchCovers() {
+  return useMutation({ mutationFn: libraryApi.fetchCovers });
+}
+
+/** Polls a background job every second until it finishes. */
+export function useJob(jobId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.job(jobId ?? ""),
+    queryFn: () => libraryApi.job(jobId as string),
+    enabled: !!jobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "queued" || status === "running" ? 1000 : false;
+    },
   });
 }
 

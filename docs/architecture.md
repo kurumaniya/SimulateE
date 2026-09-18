@@ -104,8 +104,8 @@ these headers (see README → Deployment).
 * **Config** is a single `pydantic-settings` object (`core/config.py`) read from
   `.env`. `APP_NAME` is configurable; the name "RetroWeb" is not baked into code.
 * **Logging** is `structlog`. Events: `rom.scan.*`, `game.launch`, `save.upload`,
-  `save.download`, `emulator.selected`, plus errors. Never logs secrets or save
-  contents.
+  `save.download`, `emulator.selected`, `cover.*`, `job.*`, plus errors. Never
+  logs secrets or save contents.
 * **Users**: Phase 1 runs in *single user mode*. A default user row is created
   on startup and `get_current_user` returns it. The dependency is the only
   place to change when authentication is added.
@@ -240,6 +240,25 @@ table is involved: the files on storage are the source of truth. The player
 asks `/api/bios/{system}` for the preferred file and passes its URL to the
 adapter.
 
+## 9c. Cover art
+
+Box art is looked up on request in the libretro-thumbnails collection
+(`https://thumbnails.libretro.com/<System>/Named_Boxarts/<name>.png`), which
+is named exactly like No-Intro / Redump dumps, so the scanner's file names
+usually resolve in one request. `library/artwork.py` holds the name logic:
+the system directory table, RetroArch's `&*/:`<>?\|` → `_` substitution, and
+a fuzzy fallback that parses the server's directory index (cached per system
+for a day) and picks the entry with the same normalised title, scoring shared
+region tokens up and beta/proto/demo tags down. `services/artwork.py` does
+the HTTP through an injectable `httpx` transport (tests run a fake server)
+and writes the PNG to `covers/<game_id>.png`.
+
+Library-wide fetching runs as a background job (`services/jobs.py`: one
+thread per job, one active job per kind, progress counters polled through
+`/api/library/jobs/{id}`). The job runner is process-local and deliberately
+simple; it is also the hook for making library scans asynchronous later.
+`ONLINE_METADATA=false` turns the endpoints off (409 `feature_disabled`).
+
 ## 10. Request flow for playing a game
 
 ```
@@ -310,3 +329,5 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | PSP saves | `PSP/SAVEDATA` tree packed as an uncompressed tar, one blob per game | Keeps the server's one-blob battery model; PPSSPP has no SRAM; the tree is emptied before each boot because the browser memory stick is shared |
 | Battery save timing | Resolved before the emulator loads, applied before boot when the adapter can (`initialSaveApplied`), otherwise inject + reset after start | PPSSPP's `retro_reset` asserts on its never-joined boot thread; restoring before boot also removes a reboot for every core that can take it |
 | Proxy body size | `experimental.proxyClientMaxBodySize = 2gb` | Next.js drops rewritten request bodies over 10 MB; PPSSPP states are ~40 MB and ROM uploads larger |
+| Cover art source | libretro-thumbnails over HTTP, on request only | No API key or account, names match the scanner's No-Intro file names, and a directory index allows fuzzy matching; nothing is fetched behind the user's back |
+| Background jobs | In-process thread + polled counters | Enough for one server process and a single user; a queue would add a dependency for no gain today |

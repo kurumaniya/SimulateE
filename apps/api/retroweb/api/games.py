@@ -9,12 +9,14 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
-from retroweb.api.deps import DbDep, ScannerDep, SettingsDep, StorageDep, UserDep
+from retroweb.api.deps import ArtworkDep, DbDep, ScannerDep, SettingsDep, StorageDep, UserDep
 from retroweb.api.ranges import UnsatisfiableRangeError, parse_range
 from retroweb.api.serializers import game_detail, game_summary
 from retroweb.api.uploads import read_bounded, spool_bounded
 from retroweb.core.errors import (
+    CoverNotFoundError,
     DuplicateRomError,
+    FeatureDisabledError,
     InvalidFilenameError,
     NotFoundError,
     RomMissingError,
@@ -32,6 +34,7 @@ from retroweb.schemas.games import (
     GameUpdate,
     ScanResponse,
 )
+from retroweb.services import artwork as artwork_service
 from retroweb.services import games as game_service
 from retroweb.services.games import SortKey
 
@@ -252,6 +255,19 @@ def get_cover(game_id: str, db: DbDep, storage: StorageDep) -> Response:
             "ETag": f'"{game.updated_at.timestamp()}"',
         },
     )
+
+
+@router.post("/{game_id}/cover/fetch", response_model=GameDetail)
+def fetch_cover_online(
+    game_id: str, db: DbDep, user: UserDep, storage: StorageDep, artwork: ArtworkDep
+) -> GameDetail:
+    """Look the cover up in the libretro-thumbnails collection, replacing any existing one."""
+    if not artwork.enabled:
+        raise FeatureDisabledError("Online cover art is disabled (ONLINE_METADATA=false)")
+    outcome = artwork_service.fetch_cover(db, storage, artwork, game_id, force=True)
+    if outcome == "not_found":
+        raise CoverNotFoundError()
+    return game_detail(game_service.get_game_item(db, user, game_id))
 
 
 @router.put("/{game_id}/cover", response_model=GameDetail)

@@ -5,6 +5,7 @@ import { use, useRef, useState } from "react";
 import { systemName, AUTO_STATE_SLOT, type SaveOut } from "@retroweb/shared";
 import {
   useDeleteSave,
+  useFetchCover,
   useGame,
   useSaves,
   useSystemBios,
@@ -27,6 +28,7 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
   const { data: bios } = useSystemBios(game?.system);
   const favorite = useToggleFavorite();
   const uploadCover = useUploadCover();
+  const fetchCover = useFetchCover();
   const deleteSave = useDeleteSave();
   const coverInput = useRef<HTMLInputElement>(null);
   const [coverError, setCoverError] = useState<unknown>(null);
@@ -77,6 +79,18 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
             onClick={() => coverInput.current?.click()}
           >
             {uploadCover.isPending ? "Uploading…" : game.has_cover ? "Replace cover" : "Upload cover"}
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full"
+            disabled={fetchCover.isPending || uploadCover.isPending}
+            title="Look the box art up in the libretro-thumbnails collection by file name"
+            onClick={() => {
+              setCoverError(null);
+              fetchCover.mutate({ id: game.id }, { onError: setCoverError });
+            }}
+          >
+            {fetchCover.isPending ? "Searching…" : "Fetch cover online"}
           </Button>
           {coverError ? <ErrorBanner error={coverError} /> : null}
         </div>

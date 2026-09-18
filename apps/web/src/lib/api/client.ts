@@ -17,6 +17,10 @@ export type ApiErrorCode =
   | "storage_error"
   | "invalid_storage_key"
   | "bios_missing"
+  | "cover_not_found"
+  | "feature_disabled"
+  | "metadata_unavailable"
+  | "job_running"
   | "network_error"
   | "unknown";
 
@@ -109,6 +113,14 @@ export function describeError(error: unknown): { title: string; detail: string; 
         return { title: "Already in library", detail: error.message, code: error.code };
       case "bios_missing":
         return { title: "BIOS required", detail: "Upload the BIOS file for this system in Settings.", code: error.code };
+      case "cover_not_found":
+        return { title: "No cover found", detail: "The libretro-thumbnails collection has no box art matching this file name. Rename the file in No-Intro style or upload a cover.", code: error.code };
+      case "feature_disabled":
+        return { title: "Feature disabled", detail: error.message, code: error.code };
+      case "metadata_unavailable":
+        return { title: "Cover source unreachable", detail: "The thumbnail server could not be reached. Try again later.", code: error.code };
+      case "job_running":
+        return { title: "Already running", detail: error.message, code: error.code };
       case "network_error":
         return { title: "Network disconnected", detail: "Check that the server is running and reachable.", code: error.code };
       case "not_found":
