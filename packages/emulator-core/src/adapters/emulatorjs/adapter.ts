@@ -561,6 +561,15 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
     if (document.fullscreenElement) await document.exitFullscreen();
   }
 
+  openControlSettings(): boolean {
+    const menu = this.emulator?.controlMenu;
+    if (!menu || !this.isRunning()) return false;
+    // Same as EmulatorJS's own bottom-bar button: the dialog is a hidden
+    // element it built at start-up.
+    menu.style.display = "";
+    return true;
+  }
+
   on<E extends EmulatorEvent>(event: E, handler: (payload: EmulatorEventMap[E]) => void): () => void {
     let set = this.handlers.get(event);
     if (!set) {

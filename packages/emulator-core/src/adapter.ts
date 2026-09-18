@@ -124,6 +124,12 @@ export interface EmulatorAdapter {
   enterFullscreen(): Promise<void>;
   exitFullscreen(): Promise<void>;
 
+  /**
+   * Open the emulator's own keyboard / gamepad remapping UI, when it has
+   * one. Returns false when nothing could be shown (not running, no UI).
+   */
+  openControlSettings(): boolean;
+
   on<E extends EmulatorEvent>(event: E, handler: (payload: EmulatorEventMap[E]) => void): () => void;
 
   destroy(): Promise<void>;

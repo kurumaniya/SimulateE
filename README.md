@@ -206,8 +206,8 @@ headers. Configuration is done through `.env` (see `.env.example`).
 - Closing the browser tab without pressing **Quit** relies on the periodic save
   sync (every 60 s) and a best-effort flush when the tab is hidden; the
   automatic resume point is only captured by Quit.
-- Controller remapping uses EmulatorJS's built-in *Control Settings* menu
-  (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
+- Controller remapping uses EmulatorJS's built-in *Control Settings* dialog,
+  opened from the 🎮 button in the RetroWeb toolbar (or EmulatorJS's bottom bar).
 - PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Disc swapping for `.m3u` sets uses EmulatorJS's *Disks* menu in the bottom bar.
 - Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
 - PSP: PPSSPP only runs cross-origin isolated (the app sends the headers;
@@ -217,7 +217,7 @@ headers. Configuration is done through `.env` (see `.env.example`).
 - Nintendo DS: melonDS writes the cart save about three seconds after the
   game's last write, so quitting inside that window can lose the very last
   in-game save. DSi mode, microphone and Wi-Fi are not exposed.
-- Mobile works but is not optimised; EmulatorJS's on-screen controls appear on touch devices.
+- On phones EmulatorJS's on-screen controls appear automatically; a tap brings the RetroWeb toolbar back, which scrolls sideways on narrow screens.
 
 ## Legal notice
 
@@ -239,6 +239,7 @@ libretro-thumbnails collection, whose contents are maintained by that project.
 5. ~~Phase 5 — PSP (PPSSPP, threads)~~ done
 6. ~~Phase 6 — Cover art from libretro-thumbnails (per game + library-wide background job)~~ done
 7. ~~Phase 7 — Background scan with progress, `.m3u` multi-disc sets, GB/GBC boot ROMs and FDS BIOS wired~~ done
-8. Later — multi-user accounts; Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions; input remapping UI
+8. ~~Phase 8 — Touch: on-screen controls verified, toolbar reachable by tap, Controls button for remapping~~ done
+9. Later — multi-user accounts; Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

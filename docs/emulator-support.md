@@ -261,9 +261,12 @@ core's own version string; the EmulatorJS release pins the core build).
 
 EmulatorJS handles keyboard and Gamepad API input itself (Xbox and PlayStation
 controllers use the standard gamepad mapping; the built-in *Control Settings*
-menu allows remapping). RetroWeb exposes a virtual-button vocabulary in
-`packages/emulator-core/src/input.ts` so future adapters (PPSSPP) share one
-mapping model; a RetroWeb-level remapping UI is planned. Nintendo DS touch
+dialog allows remapping and the toolbar's 🎮 button opens it through
+`EmulatorAdapter.openControlSettings()`). On touch devices EmulatorJS draws
+its own on-screen gamepad (D-pad, face buttons, shoulders, Start/Select,
+fast-forward/slow-motion) as soon as a touch is detected. RetroWeb exposes a
+virtual-button vocabulary in `packages/emulator-core/src/input.ts` so future
+adapters share one mapping model. Nintendo DS touch
 input is described above; the DS X/Y buttons follow the SNES mapping below.
 
 Default keyboard layout (EmulatorJS RetroPad defaults; SNES/Genesis add X/Y

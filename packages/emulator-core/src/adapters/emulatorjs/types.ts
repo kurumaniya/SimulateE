@@ -51,6 +51,8 @@ export interface EjsInstance {
   /** Applies a setting through EmulatorJS's menu path, persisting it in its localStorage. */
   menuOptionChanged?(option: string, value: string): void;
   textElem?: HTMLElement | null;
+  /** The "Control Settings" dialog; shown by clearing its inline display. */
+  controlMenu?: HTMLElement;
   elements: { parent: HTMLElement; menu?: HTMLElement };
   gamepad?: { terminate(): void };
   on(event: string, handler: (payload?: unknown) => void): void;

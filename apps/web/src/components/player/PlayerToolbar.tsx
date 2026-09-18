@@ -18,6 +18,7 @@ interface Props {
   onToggleMuted: () => void;
   onVolume: (volume: number) => void;
   onScreenLayout: (id: string) => void;
+  onControls: () => void;
   onFullscreen: () => void;
   onQuit: () => void;
 }
@@ -37,24 +38,25 @@ export function PlayerToolbar(props: Props) {
         setMenu(null);
         onClick();
       }}
-      className="rounded-md px-2.5 py-1.5 text-sm text-fg/90 hover:bg-white/10 disabled:opacity-40"
+      className="shrink-0 rounded-md px-2.5 py-1.5 text-sm text-fg/90 hover:bg-white/10 disabled:opacity-40"
     >
       {content}
     </button>
   );
 
   return (
-    <div className="flex items-center gap-2 bg-gradient-to-b from-black/90 to-black/0 px-3 py-2">
+    // Scrolls sideways on phones instead of wrapping over the game.
+    <div className="hide-scrollbar flex items-center gap-2 overflow-x-auto bg-gradient-to-b from-black/90 to-black/0 px-3 py-2">
       <button
         type="button"
         onClick={props.onQuit}
         disabled={state.phase === "exiting"}
-        className="rounded-md px-3 py-1.5 text-sm font-medium hover:bg-white/10 disabled:opacity-40"
+        className="shrink-0 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-white/10 disabled:opacity-40"
         aria-label="Quit game"
       >
         ✕ Quit
       </button>
-      <div className="min-w-0 flex-1 truncate px-2 text-sm font-medium">{game.title}</div>
+      <div className="min-w-16 flex-1 truncate px-2 text-sm font-medium">{game.title}</div>
       <SyncIndicator status={state.syncStatus} detail={state.syncDetail} />
 
       {iconButton(paused ? "Resume" : "Pause", props.onTogglePause, paused ? "▶ Resume" : "⏸ Pause", !running)}
@@ -92,6 +94,7 @@ export function PlayerToolbar(props: Props) {
           ))}
         </select>
       )}
+      {iconButton("Controls (remap keyboard and gamepad)", props.onControls, "🎮", !running)}
       {iconButton("Screenshot", props.onScreenshot, "📷", !running)}
       {iconButton(state.muted ? "Unmute" : "Mute", props.onToggleMuted, state.muted ? "🔇" : "🔊")}
       <input

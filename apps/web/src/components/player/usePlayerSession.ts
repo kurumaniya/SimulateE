@@ -376,6 +376,14 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
     [withAdapter, patch, focusEmulator, game],
   );
 
+  const openControls = useCallback(
+    () =>
+      withAdapter(async (adapter) => {
+        if (!adapter.openControlSettings()) flash("No control settings for this emulator");
+      }),
+    [withAdapter, flash],
+  );
+
   const toggleFullscreen = useCallback(
     () =>
       withAdapter(async (adapter) => {
@@ -419,6 +427,7 @@ export function usePlayerSession(game: GameDetail | undefined, resume: boolean) 
       setVolume,
       toggleMuted,
       setScreenLayout,
+      openControls,
       toggleFullscreen,
       quit,
       focusEmulator,

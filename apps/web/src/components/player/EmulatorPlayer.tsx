@@ -35,9 +35,12 @@ export function EmulatorPlayer({ game, resume }: { game: GameDetail; resume: boo
     };
     show();
     window.addEventListener("pointermove", show);
+    // Touch screens send no pointermove while idle: a tap brings the bar back.
+    window.addEventListener("pointerdown", show);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("pointermove", show);
+      window.removeEventListener("pointerdown", show);
       window.removeEventListener("keydown", onKey);
       window.clearTimeout(hideTimer.current);
     };
@@ -111,6 +114,7 @@ export function EmulatorPlayer({ game, resume }: { game: GameDetail; resume: boo
             onToggleMuted={actions.toggleMuted}
             onVolume={actions.setVolume}
             onScreenLayout={actions.setScreenLayout}
+            onControls={actions.openControls}
             onFullscreen={actions.toggleFullscreen}
             onQuit={handleQuit}
           />
