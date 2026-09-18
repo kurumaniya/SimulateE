@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import make_gba_rom
+from tests.conftest import make_gba_rom, wait_for_job
 
 
 def test_scan_adds_game_with_filename_metadata(client: TestClient, rom_file: Path) -> None:
@@ -19,6 +19,17 @@ def test_scan_adds_game_with_filename_metadata(client: TestClient, rom_file: Pat
     assert detail["rom_hash"] == hashlib.sha256(rom_file.read_bytes()).hexdigest()
     assert detail["rom_size"] == rom_file.stat().st_size
     assert detail["files"][0]["label"] == "Rev 1"
+
+
+def test_scan_as_background_job(client: TestClient, rom_file: Path) -> None:
+    started = client.post("/api/library/scan")
+    assert started.status_code == 202, started.text
+    job = wait_for_job(client, started.json()["id"])
+    assert job["status"] == "done", job
+    assert job["kind"] == "library.scan"
+    assert job["total"] == 1 and job["done"] == 1
+    assert job["counters"] == {"added": 1, "updated": 0, "missing": 0, "skipped": 0}
+    assert client.get("/api/games").json()["total"] == 1
 
 
 def test_rescan_is_idempotent(client: TestClient, rom_file: Path) -> None:

@@ -12,12 +12,12 @@ wired/tested here yet, **planned** = not started.
 | System | Enum id | Extensions | Adapter | Core | Status | Known issues |
 |--------|---------|------------|---------|------|--------|--------------|
 | Game Boy Advance | `gba` | `.gba` | EmulatorJS | mGBA | **working** (Phase 1) | Threads disabled; HLE BIOS used unless a BIOS is uploaded (BIOS upload UI is planned) |
-| Game Boy | `gb` | `.gb` | EmulatorJS | Gambatte | **working** (Phase 2) | Runs without a boot ROM (Gambatte's built-in start-up); a user-supplied boot ROM is not wired yet |
-| Game Boy Color | `gbc` | `.gbc` | EmulatorJS | Gambatte | **working** (Phase 2) | Same core as GB (EmulatorJS system id `gb`) |
-| NES / Famicom | `nes` | `.nes`, `.fds`, `.unf` | EmulatorJS | FCEUmm | **working** (Phase 2) | FDS needs a user-supplied BIOS (no upload UI yet); Nestopia core is available but not wired |
+| Game Boy | `gb` | `.gb` | EmulatorJS | Gambatte | **working** (Phase 2) | Runs without a boot ROM; an uploaded `gb_bios.bin` is written to the system directory and `gambatte_gb_bootloader` is on (Phase 7) |
+| Game Boy Color | `gbc` | `.gbc` | EmulatorJS | Gambatte | **working** (Phase 2) | Same core as GB (EmulatorJS system id `gb`); `gbc_bios.bin` as above |
+| NES / Famicom | `nes` | `.nes`, `.fds`, `.unf` | EmulatorJS | FCEUmm | **working** (Phase 2) | `.fds` needs the uploaded `disksys.rom`, written to the system directory (Phase 7); Nestopia core is available but not wired |
 | SNES / Super Famicom | `snes` | `.sfc`, `.smc` | EmulatorJS | Snes9x | **working** (Phase 2) | |
 | Sega Genesis / Mega Drive | `genesis` | `.md`, `.gen`, `.smd`, `.bin` | EmulatorJS | Genesis Plus GX | **working** (Phase 2) | `.bin` is ambiguous; put files under `roms/genesis/` or rely on the `SEGA` header sniff. Sega CD / 32X are not registered |
-| PlayStation | `ps1` | `.cue`+`.bin`/`.img`, `.pbp`, `.m3u`, `.ccd` | EmulatorJS | PCSX-ReARMed | **working** (Phase 3) | The EmulatorJS build of PCSX-ReARMed does not accept `.chd`, `.iso` or `.exe`. Runs without a BIOS through HLE; upload one in Settings for full compatibility. Multi-disc (`.m3u`) is not grouped by the scanner yet |
+| PlayStation | `ps1` | `.cue`+`.bin`/`.img`, `.pbp`, `.m3u`, `.ccd` | EmulatorJS | PCSX-ReARMed | **working** (Phase 3) | The EmulatorJS build of PCSX-ReARMed does not accept `.chd`, `.iso` or `.exe`. Runs without a BIOS through HLE; upload one in Settings for full compatibility. An `.m3u` and the cue sheets and tracks it names are one game (Phase 7); discs are swapped through EmulatorJS's *Disks* menu |
 | Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next (GLideN64, WebGL2); ParaLLEl-N64 available via `adapterOptions.retroarchCore` | **working** (Phase 3) | Needs WebGL2. Slow without GPU acceleration (headless CI runs at a few fps) |
 | Nintendo DS | `nds` | `.nds` | EmulatorJS | melonDS (DeSmuME 2015 also fetched, not wired) | **working** (Phase 4) | Eight screen layouts switchable while playing; touch via mouse or finger. Runs on FreeBIOS unless `bios7.bin`, `bios9.bin` and `firmware.bin` are uploaded. DSi mode, microphone and Wi-Fi are not exposed. The core writes the cart save ~3 s after the game's last write, so quitting within that window can lose the very last save |
 | PSP | `psp` | `.iso`, `.cso`, `.pbp` (also `.elf`/`.prx` homebrew) | EmulatorJS | PPSSPP (threaded build only; WebGL2) | **working** (Phase 5) | Needs a cross-origin-isolated page (COOP/COEP, served by default) and WebGL2. Saves are the memory stick's `PSP/SAVEDATA` tree packed as a tar. Save states are ~40 MB. Software-rendered headless runs are slow; a GPU is expected for real games |
@@ -122,6 +122,17 @@ with the homebrew ROMs from `scripts/make-test-rom.py`, one per system):
 * **Alternative cores**: `adapterOptions.retroarchCore` becomes EmulatorJS
   `defaultOptions.retroarch_core` (e.g. `parallel_n64`). There is no UI for
   it yet.
+
+* **Multi-disc sets**: the primary file is the `.m3u`; the adapter writes
+  the cue sheets and tracks it names next to it, RetroArch's disk control
+  reports the disc count and EmulatorJS shows its *Disks* menu. EmulatorJS
+  4.2.3 builds that menu before it creates `allSettings` and crashes with
+  "Cannot set properties of undefined (setting 'disk')"; the adapter creates
+  the map right after constructing the instance, which is enough.
+* **System-directory BIOS files** (`biosMode: "system-dir"`): Gambatte
+  (`gb_bios.bin`, `gbc_bios.bin`, with `gambatte_gb_bootloader` enabled),
+  FCEUmm (`disksys.rom`) and melonDS get every installed file written to `/`
+  before content loads, the same path companion files use.
 
 Known issues:
 

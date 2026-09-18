@@ -229,6 +229,19 @@ in one function so a smarter policy can replace it.
 4. Upsert by hash: known hash → update location if the file moved; new hash →
    new `Game` + `GameFile`. Files that vanished are flagged `missing`.
 
+Containers are read before hashing: an `.m3u` names cue sheets, a `.cue`
+names tracks, and everything a container names becomes a *companion* of the
+outermost container (`find_companions`). When a playlist appears for discs
+that already had their own entries, the scanner adopts the first disc's game
+(so its saves survive), re-titles it after the playlist, demotes every disc
+to a companion and removes entries left without files. A companion that
+vanished and that no container names any more (a renamed disc) is dropped
+rather than flagged, so the game stays playable; one a container still
+names is flagged `missing` as before.
+
+The scan runs synchronously for `POST /games/scan` and as a background job
+for `POST /library/scan` (progress = files hashed so far).
+
 ## 9b. BIOS files
 
 BIOS images are user uploads, never downloads. `library/bios.py` is a
@@ -331,3 +344,5 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | Proxy body size | `experimental.proxyClientMaxBodySize = 2gb` | Next.js drops rewritten request bodies over 10 MB; PPSSPP states are ~40 MB and ROM uploads larger |
 | Cover art source | libretro-thumbnails over HTTP, on request only | No API key or account, names match the scanner's No-Intro file names, and a directory index allows fuzzy matching; nothing is fetched behind the user's back |
 | Background jobs | In-process thread + polled counters | Enough for one server process and a single user; a queue would add a dependency for no gain today |
+| Multi-disc sets | `.m3u` is the primary file; discs adopt the first disc's existing game | Keeps saves when a playlist is added later; RetroArch's disk control handles swapping so no RetroWeb-level disc UI is needed |
+| PS1 test content | Two-disc `.m3u` set | The same e2e test covers playlist grouping, disc count and the save round trip |

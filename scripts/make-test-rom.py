@@ -18,7 +18,8 @@ Where the counter lives in the battery save file (index into the .sav/.srm):
     snes     byte 0      (magic at 1-4)
     genesis  byte 1      (odd-byte SRAM; magic at 3,5,7,9)
     ps1      (no in-game write: the program only paints the screen; the e2e
-              test injects bytes into the memory card and checks they survive)
+              test injects bytes into the memory card and checks they survive;
+              written as a two-disc .m3u set so multi-disc grouping is covered)
     n64      (same: paints the screen; save round-trip checked by injection)
     nds      byte 0      (EEPROM; magic "RWEB" at bytes 4-7; each touch of the
               bottom screen is logged at 0x10 as 'T', touch number, x, y)
@@ -38,6 +39,7 @@ from __future__ import annotations
 
 import struct
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -345,7 +347,9 @@ def _psx_exe(program: bytes) -> bytes:
     return bytes(header) + program.ljust(text_size, b"\0")
 
 
-def build_ps1_disc() -> bytes:
+def build_ps1_disc(disc: int = 1) -> bytes:
+    """One disc of the test set; ``disc`` only changes the volume set id so
+    the images hash differently and the scanner keeps both."""
     exe = _psx_exe(PS1_PROGRAM)
     cnf = b"BOOT = cdrom:\\MAIN.EXE;1\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFFF0\r\n"
     root_lba, cnf_lba, exe_lba = 20, 21, 22
@@ -371,7 +375,7 @@ def build_ps1_disc() -> bytes:
     struct.pack_into(">I", pvd, 148, 19)
     root_record = _iso_dir_record(b"\0", root_lba, CD_SECTOR, 2)
     pvd[156 : 156 + len(root_record)] = root_record
-    pvd[190:318] = b"RETROWEB".ljust(128)
+    pvd[190:318] = f"RETROWEB DISC {disc}".encode().ljust(128)
     path_l = bytes([1, 0]) + struct.pack("<I", root_lba) + struct.pack("<H", 1) + b"\0\0"
     path_m = bytes([1, 0]) + struct.pack(">I", root_lba) + struct.pack(">H", 1) + b"\0\0"
     terminator = bytes([255]) + b"CD001" + bytes([1])
@@ -402,6 +406,14 @@ def build_ps1_disc() -> bytes:
 
 def build_ps1_cue(bin_name: str) -> bytes:
     return f'FILE "{bin_name}" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n'.encode()
+
+
+PS1_DISCS = ("RetroWeb Test (World) (Disc 1)", "RetroWeb Test (World) (Disc 2)")
+
+
+def build_ps1_playlist() -> bytes:
+    """A two-disc .m3u so the scanner's grouping and the emulator's disc menu are exercised."""
+    return "".join(f"{name}.cue\n" for name in PS1_DISCS).encode()
 
 
 # ---------------------------------------------------------------------------
@@ -633,13 +645,22 @@ BUILDERS = {
     "nes": ("RetroWeb Test (World).nes", build_nes),
     "snes": ("RetroWeb Test (World).sfc", build_snes),
     "genesis": ("RetroWeb Test (World).md", build_genesis),
-    "ps1": ("RetroWeb Test (World).cue", lambda: build_ps1_cue("RetroWeb Test (World).bin")),
+    "ps1": ("RetroWeb Test (World).m3u", build_ps1_playlist),
     "n64": ("RetroWeb Test (World).z64", build_n64),
     "nds": ("RetroWeb Test (World).nds", build_nds),
     "psp": ("RetroWeb Test (World).pbp", build_psp),
 }
 # Extra files written next to the primary one.
-COMPANIONS = {"ps1": ("RetroWeb Test (World).bin", build_ps1_disc)}
+COMPANIONS: dict[str, list[tuple[str, Callable[[], bytes]]]] = {
+    "ps1": [
+        item
+        for number, name in enumerate(PS1_DISCS, start=1)
+        for item in (
+            (f"{name}.cue", lambda name=name: build_ps1_cue(f"{name}.bin")),
+            (f"{name}.bin", lambda number=number: build_ps1_disc(number)),
+        )
+    ]
+}
 
 
 def main() -> None:
@@ -652,8 +673,7 @@ def main() -> None:
         data = builder()
         target.write_bytes(data)
         print(f"wrote {target} ({len(data)} bytes)")
-        if system in COMPANIONS:
-            companion_name, companion_builder = COMPANIONS[system]
+        for companion_name, companion_builder in COMPANIONS.get(system, []):
             companion = root / system / companion_name
             companion_data = companion_builder()
             companion.write_bytes(companion_data)

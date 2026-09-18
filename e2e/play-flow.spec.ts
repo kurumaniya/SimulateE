@@ -138,7 +138,10 @@ async function findTestGame(request: Page["request"], system: string): Promise<s
     await request.get(`${API}/api/games?q=${encodeURIComponent(TEST_TITLE)}&system=${system}`)
   ).json();
   expect(list.total, `test ROM for ${system} must be scanned`).toBeGreaterThan(0);
-  const gameId: string = list.items[0].id;
+  // Regenerated test ROMs leave stale "missing" entries behind in a dev library.
+  const playable = list.items.filter((game: { rom_missing: boolean }) => !game.rom_missing);
+  expect(playable.length, `test ROM for ${system} must be present on disk`).toBeGreaterThan(0);
+  const gameId: string = playable[0].id;
   const existing = await (await request.get(`${API}/api/games/${gameId}/saves`)).json();
   for (const save of existing) await request.delete(`${API}/api/saves/${save.id}`);
   return gameId;

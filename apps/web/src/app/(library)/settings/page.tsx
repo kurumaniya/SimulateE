@@ -2,22 +2,21 @@
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ALL_SYSTEMS, GameSystem, type ScanResult } from "@retroweb/shared";
-import { useScanLibrary, useSystems, useUploadRom } from "@/lib/api/hooks";
+import { ALL_SYSTEMS, GameSystem } from "@retroweb/shared";
+import { useSystems, useUploadRom } from "@/lib/api/hooks";
 import { getEmulatorRegistry, EMULATORJS_ASSETS_URL } from "@/lib/emulator/registry";
 import { useBrowserCapabilities } from "@/lib/emulator/useBrowserCapabilities";
 import { BiosPanel } from "@/components/settings/BiosPanel";
 import { CoverArtPanel } from "@/components/settings/CoverArtPanel";
+import { LibraryScanPanel } from "@/components/settings/LibraryScanPanel";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { APP_NAME } from "@/lib/config";
 
 export default function SettingsPage() {
-  const scan = useScanLibrary();
   const upload = useUploadRom();
   const { data: systems } = useSystems();
   const [uploadSystem, setUploadSystem] = useState<GameSystem>(GameSystem.GBA);
-  const [lastScan, setLastScan] = useState<ScanResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const capabilities = useBrowserCapabilities();
   const { data: assetsInstalled } = useQuery({
@@ -37,37 +36,7 @@ export default function SettingsPage() {
         <p className="text-sm text-muted">{APP_NAME} manages only the game files you provide.</p>
       </header>
 
-      <section className="space-y-3 rounded-xl border border-line bg-card p-5">
-        <h2 className="font-semibold">Library</h2>
-        <p className="text-sm text-muted">
-          Place your own ROM files under <code className="text-fg">data/roms/&lt;system&gt;/</code>{" "}
-          (for example <code className="text-fg">data/roms/gba/</code>) and scan. Files are identified
-          by hash, so re-scanning is safe.
-        </p>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="primary"
-            disabled={scan.isPending}
-            onClick={() => scan.mutate(undefined, { onSuccess: setLastScan })}
-          >
-            {scan.isPending ? "Scanning…" : "Scan library"}
-          </Button>
-          {lastScan && (
-            <span className="text-sm text-muted">
-              Added {lastScan.added} · updated {lastScan.updated} · missing {lastScan.missing} ·
-              skipped {lastScan.skipped}
-            </span>
-          )}
-        </div>
-        {scan.error ? <ErrorBanner error={scan.error} /> : null}
-        {lastScan && lastScan.errors.length > 0 && (
-          <ul className="list-disc pl-5 text-xs text-danger">
-            {lastScan.errors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <LibraryScanPanel />
 
       <section className="space-y-3 rounded-xl border border-line bg-card p-5">
         <h2 className="font-semibold">Upload a ROM</h2>

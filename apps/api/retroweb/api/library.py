@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from retroweb.api.deps import ArtworkDep, DbDep, JobsDep, StorageDep, UserDep
+from retroweb.api.deps import ArtworkDep, DbDep, JobsDep, ScannerDep, StorageDep, UserDep
 from retroweb.api.serializers import game_summary, job_out
 from retroweb.core.errors import FeatureDisabledError, NotFoundError
 from retroweb.library.systems import ADAPTER_SUPPORTED_SYSTEMS, SYSTEMS, GameSystem
@@ -12,10 +12,20 @@ from retroweb.schemas.games import HomeResponse, PlatformSummary, SystemOut
 from retroweb.schemas.jobs import JobOut
 from retroweb.services import artwork as artwork_service
 from retroweb.services import games as game_service
+from retroweb.services import scan as scan_service
 
 router = APIRouter(tags=["library"])
 
 HOME_SECTION_LIMIT = 12
+
+
+@router.post("/library/scan", response_model=JobOut, status_code=202)
+def scan_library_async(scanner: ScannerDep, jobs: JobsDep, _user: UserDep) -> JobOut:
+    """Scan the ROM directory in the background; poll the job for progress and counts."""
+    job = jobs.start(
+        scan_service.LIBRARY_SCAN_JOB, lambda job: scan_service.scan_library_job(job, scanner)
+    )
+    return job_out(job)
 
 
 @router.post("/library/covers/fetch", response_model=JobOut, status_code=202)

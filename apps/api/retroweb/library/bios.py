@@ -59,13 +59,13 @@ BIOS_REGISTRY: dict[GameSystem, SystemBiosInfo] = {
     ),
     GameSystem.GB: SystemBiosInfo(
         system=GameSystem.GB,
-        note="Optional Game Boy boot ROM (scrolling logo). Not wired to the emulator yet.",
+        note="Optional Game Boy boot ROM: shows the scrolling logo on start-up.",
         optional=True,
         files=(BiosSpec("gb_bios.bin", "Game Boy boot ROM", "32fbbd84168d3482956eb3c5051637f5"),),
     ),
     GameSystem.GBC: SystemBiosInfo(
         system=GameSystem.GBC,
-        note="Optional Game Boy Color boot ROM. Not wired to the emulator yet.",
+        note="Optional Game Boy Color boot ROM: shows the start-up logo animation.",
         optional=True,
         files=(
             BiosSpec("gbc_bios.bin", "Game Boy Color boot ROM", "dbfce9db9deaa2567f6a84fde55f9680"),
@@ -89,7 +89,7 @@ BIOS_REGISTRY: dict[GameSystem, SystemBiosInfo] = {
     ),
     GameSystem.NES: SystemBiosInfo(
         system=GameSystem.NES,
-        note="Only Famicom Disk System images need a BIOS. Not wired to the emulator yet.",
+        note="Only Famicom Disk System (.fds) images need it; cartridge games run without.",
         optional=True,
         files=(
             BiosSpec("disksys.rom", "Famicom Disk System BIOS", "ca30b50f880eb660a320674ed365ef7a"),

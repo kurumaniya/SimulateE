@@ -40,6 +40,12 @@ export interface EjsInstance {
   gameManager?: EjsGameManager;
   /** Set from the core's `supportsMouse` flag; a canvas click then locks the pointer. */
   enableMouseLock?: boolean;
+  /**
+   * Settings as EmulatorJS's menu holds them. 4.2.3 creates it in
+   * `setupSettingsMenu()`, which runs *after* `setupDisksMenu()` writes to
+   * it, so multi-disc games crash unless the adapter creates it first.
+   */
+  allSettings?: Record<string, string>;
   /** Value of a setting as EmulatorJS's own menu holds it (after start). */
   getSettingValue?(id: string): string | null;
   /** Applies a setting through EmulatorJS's menu path, persisting it in its localStorage. */

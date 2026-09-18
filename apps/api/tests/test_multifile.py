@@ -46,6 +46,85 @@ def test_cue_and_bin_become_one_game(client: TestClient, data_dir: Path) -> None
     assert again["added"] == 0 and again["skipped"] == 2
 
 
+def _make_set(folder: Path, title: str, discs: int) -> Path:
+    """A multi-disc set: one .cue/.bin per disc plus an .m3u naming the cues."""
+    names = [f"{title} (Disc {n})" for n in range(1, discs + 1)]
+    for name in names:
+        _make_disc(folder, name)
+    playlist = folder / f"{title}.m3u"
+    playlist.write_text("# discs\n" + "".join(f"{name}.cue\n" for name in names))
+    return playlist
+
+
+def test_m3u_groups_discs_into_one_game(client: TestClient, data_dir: Path) -> None:
+    playlist = _make_set(data_dir / "roms" / "ps1", "Long RPG (USA)", 2)
+    result = client.post("/api/games/scan").json()
+    assert result["added"] == 5, result  # m3u + 2 cue + 2 bin
+    games = client.get("/api/games").json()
+    assert games["total"] == 1
+    detail = client.get(f"/api/games/{games['items'][0]['id']}").json()
+    assert detail["title"] == "Long RPG"
+    assert detail["rom_filename"] == playlist.name
+    roles = {f["filename"]: f["role"] for f in detail["files"]}
+    assert roles[playlist.name] == "primary"
+    assert sum(role == "companion" for role in roles.values()) == 4
+    again = client.post("/api/games/scan").json()
+    assert again["added"] == 0 and again["skipped"] == 5
+
+
+def test_m3u_adopts_existing_disc_games_and_keeps_saves(client: TestClient, data_dir: Path) -> None:
+    folder = data_dir / "roms" / "ps1"
+    _make_disc(folder, "Long RPG (USA) (Disc 1)")
+    _make_disc(folder, "Long RPG (USA) (Disc 2)")
+    client.post("/api/games/scan")
+    games = client.get("/api/games").json()["items"]
+    assert len(games) == 2
+    disc1 = next(
+        g
+        for g in games
+        if client.get(f"/api/games/{g['id']}").json()["rom_filename"].endswith("(Disc 1).cue")
+    )
+    save = client.post(
+        f"/api/games/{disc1['id']}/saves",
+        data={"save_type": "battery", "slot": "0", "emulator_id": "test"},
+        files={"file": ("battery.sav", b"progress", "application/octet-stream")},
+    )
+    assert save.status_code == 201, save.text
+
+    playlist = _make_set(folder, "Long RPG (USA)", 2)  # rewrites the same discs + adds the m3u
+    result = client.post("/api/games/scan").json()
+    assert result["added"] == 1, result  # only the playlist is new
+    games = client.get("/api/games").json()
+    assert games["total"] == 1
+    merged = client.get(f"/api/games/{games['items'][0]['id']}").json()
+    assert merged["id"] == disc1["id"], "disc 1's game (and its saves) must survive"
+    assert merged["rom_filename"] == playlist.name
+    assert len(merged["files"]) == 5
+    saves = client.get(f"/api/games/{merged['id']}/saves").json()
+    assert [s["save_type"] for s in saves] == ["battery"]
+
+
+def test_renamed_disc_drops_stale_companions(client: TestClient, data_dir: Path) -> None:
+    folder = data_dir / "roms" / "ps1"
+    playlist = _make_set(folder, "Long RPG (USA)", 1)
+    client.post("/api/games/scan")
+    # Rename the disc and point the playlist at the new name.
+    (folder / "Long RPG (USA) (Disc 1).cue").unlink()
+    (folder / "Long RPG (USA) (Disc 1).bin").unlink()
+    _make_disc(folder, "Long RPG (USA) (Disc A)")
+    playlist.write_text("Long RPG (USA) (Disc A).cue\n")
+    result = client.post("/api/games/scan").json()
+    assert result["missing"] == 0, result
+    game = client.get("/api/games").json()["items"][0]
+    assert game["rom_missing"] is False
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert sorted(f["filename"] for f in detail["files"]) == [
+        "Long RPG (USA) (Disc A).bin",
+        "Long RPG (USA) (Disc A).cue",
+        "Long RPG (USA).m3u",
+    ]
+
+
 def test_missing_companion_marks_game_missing(client: TestClient, data_dir: Path) -> None:
     _, binary = _make_disc(data_dir / "roms" / "ps1", "Broken Disc")
     client.post("/api/games/scan")

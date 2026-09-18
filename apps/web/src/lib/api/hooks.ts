@@ -74,9 +74,9 @@ export function useUpdateGame() {
   });
 }
 
-export function useScanLibrary() {
-  const invalidate = useInvalidateLibrary();
-  return useMutation({ mutationFn: gamesApi.scan, onSuccess: () => invalidate() });
+/** Starts the background scan; follow it with `useJob` and invalidate when it finishes. */
+export function useStartScan() {
+  return useMutation({ mutationFn: libraryApi.scan });
 }
 
 export function useUploadRom() {

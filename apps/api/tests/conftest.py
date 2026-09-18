@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -53,6 +54,16 @@ def rom_file(data_dir: Path) -> Path:
     path = data_dir / "roms" / "gba" / "Test Game (USA) (Rev 1).gba"
     path.write_bytes(make_gba_rom())
     return path
+
+
+def wait_for_job(client: TestClient, job_id: str, timeout: float = 10.0) -> dict:  # type: ignore[type-arg]
+    """Poll a background job until it finishes (or the timeout passes)."""
+    deadline = time.monotonic() + timeout
+    job: dict = client.get(f"/api/library/jobs/{job_id}").json()  # type: ignore[type-arg]
+    while job["status"] in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.05)
+        job = client.get(f"/api/library/jobs/{job_id}").json()
+    return job
 
 
 @pytest.fixture

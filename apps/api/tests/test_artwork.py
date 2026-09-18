@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -20,7 +18,7 @@ from retroweb.library.artwork import (
 from retroweb.library.systems import GameSystem
 from retroweb.main import create_app
 from retroweb.services.artwork import ArtworkFetcher
-from tests.conftest import make_gba_rom
+from tests.conftest import make_gba_rom, wait_for_job
 
 PNG = b"\x89PNG\r\n\x1a\nfake image"
 GBA_DIR = "/Nintendo - Game Boy Advance/Named_Boxarts/"
@@ -214,13 +212,3 @@ def test_online_metadata_can_be_disabled(settings: Settings) -> None:
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "feature_disabled"
         assert client.get("/api/library/jobs/nope").status_code == 404
-
-
-def wait_for_job(client: TestClient, job_id: str, timeout: float = 10.0) -> dict:  # type: ignore[type-arg]
-    deadline = time.monotonic() + timeout
-    poll: Callable[[], dict] = lambda: client.get(f"/api/library/jobs/{job_id}").json()  # type: ignore[type-arg]  # noqa: E731
-    job = poll()
-    while job["status"] in ("queued", "running") and time.monotonic() < deadline:
-        time.sleep(0.05)
-        job = poll()
-    return job

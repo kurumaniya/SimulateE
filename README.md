@@ -18,8 +18,8 @@ Open it on another device and resume.
 
 - Eight systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis, PlayStation, Nintendo 64
 - BIOS management: upload the BIOS images you own in Settings, verified against known digests; nothing is downloaded for you
-- Multi-file games: a `.cue` sheet and the `.bin` tracks it names are one library entry
-- Library scanning of `data/roms/<system>/` with SHA-256 based duplicate detection
+- Multi-file games: a `.cue` sheet and the `.bin` tracks it names are one library entry; an `.m3u` groups a multi-disc set (discs that already had entries are merged, saves kept)
+- Library scanning of `data/roms/<system>/` with SHA-256 based duplicate detection, run as a background job with progress
 - Home dashboard: Continue Playing, Recently Played, Recently Added, Favorites, Platforms
 - Library grid with search, platform filter, favorites filter and sorting
 - Game details: cover, metadata, play time, last played, Play / Resume / Favorite
@@ -162,9 +162,10 @@ MD5; an unknown digest is kept but flagged.
 - **Nintendo DS**: optional. melonDS boots games directly with its built-in
   FreeBIOS. Upload `bios7.bin`, `bios9.bin` and `firmware.bin` (all three)
   for full compatibility; no digests are checked for these.
-- **GBA, Nintendo 64**: no BIOS needed.
-- **Game Boy / Game Boy Color boot ROMs, Famicom Disk System**: accepted by the
-  uploader but not yet passed to the emulator.
+- **GBA, Nintendo 64, PSP**: no BIOS needed.
+- **Game Boy / Game Boy Color**: optional `gb_bios.bin` / `gbc_bios.bin` boot
+  ROMs; when installed Gambatte plays the start-up logo.
+- **Famicom Disk System**: `disksys.rom` is required for `.fds` images only.
 
 RetroWeb never downloads BIOS files.
 
@@ -202,13 +203,12 @@ headers. Configuration is done through `.env` (see `.env.example`).
 ## Known limitations
 
 - Single implicit user; no login yet (the `User` model and dependency are in place).
-- Library scan runs synchronously inside the request.
 - Closing the browser tab without pressing **Quit** relies on the periodic save
   sync (every 60 s) and a best-effort flush when the tab is hidden; the
   automatic resume point is only captured by Quit.
 - Controller remapping uses EmulatorJS's built-in *Control Settings* menu
   (bottom bar, shown on mouse movement); a RetroWeb-level remapping UI is planned.
-- PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Multi-disc `.m3u` sets are not grouped yet.
+- PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Disc swapping for `.m3u` sets uses EmulatorJS's *Disks* menu in the bottom bar.
 - Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
 - PSP: PPSSPP only runs cross-origin isolated (the app sends the headers;
   a reverse proxy in front of it must keep them) with WebGL2. Saves are the
@@ -217,8 +217,7 @@ headers. Configuration is done through `.env` (see `.env.example`).
 - Nintendo DS: melonDS writes the cart save about three seconds after the
   game's last write, so quitting inside that window can lose the very last
   in-game save. DSi mode, microphone and Wi-Fi are not exposed.
-- GB/GBC boot ROMs and the FDS BIOS can be uploaded but are not passed to the emulator yet.
-- Mobile works but is not optimised; virtual on-screen controls are planned.
+- Mobile works but is not optimised; EmulatorJS's on-screen controls appear on touch devices.
 
 ## Legal notice
 
@@ -239,6 +238,7 @@ libretro-thumbnails collection, whose contents are maintained by that project.
 4. ~~Phase 4 — Nintendo DS (melonDS, dual-screen layouts, touch)~~ done
 5. ~~Phase 5 — PSP (PPSSPP, threads)~~ done
 6. ~~Phase 6 — Cover art from libretro-thumbnails (per game + library-wide background job)~~ done
-7. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions; multi-user accounts; input remapping UI
+7. ~~Phase 7 — Background scan with progress, `.m3u` multi-disc sets, GB/GBC boot ROMs and FDS BIOS wired~~ done
+8. Later — multi-user accounts; Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions; input remapping UI
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

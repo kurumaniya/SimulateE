@@ -27,7 +27,8 @@ Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 | GET | `/games/{id}` | Detail incl. `play_time_seconds`, `last_played_at`, `has_auto_state`, files |
 | PATCH | `/games/{id}` | Edit metadata (title, developer, publisher, release_date, region, description) |
 | POST | `/games/{id}/favorite` | Body `{ "favorite": true }` |
-| POST | `/games/scan` | Scan the ROM directory; returns `{ added, updated, missing, skipped, errors }` |
+| POST | `/games/scan` | Scan the ROM directory synchronously; returns `{ added, updated, missing, skipped, errors }` (kept for scripts and tests) |
+| POST | `/library/scan` | Same scan as a background job → 202 + job (`counters` carry the same four counts, `done`/`total` count files hashed). 409 `job_running` while one is active |
 | POST | `/games/upload` | Multipart: `file`, `system`. Stores the ROM under `roms/<system>/` and scans it |
 | GET | `/games/{id}/rom` | ROM binary. Supports `Range`, sends `Accept-Ranges`, `ETag` (sha256), `Content-Disposition` |
 | GET | `/games/{id}/rom/{filename}` | Same as above; `filename` must equal the stored file name (used so browser caches key per game) |
@@ -37,10 +38,11 @@ Error codes: `not_found`, `validation_error`, `rom_missing`, `unsupported_rom`,
 | POST | `/games/{id}/cover/fetch` | Look the box art up in libretro-thumbnails by file name and store it (replaces an existing cover). 404 `cover_not_found`, 409 `feature_disabled`, 502 `metadata_unavailable` |
 | GET | `/library/home` | Sections for the home page: `continue_playing`, `recently_played`, `recently_added`, `favorites`, `platforms` |
 
-## Cover art jobs
+## Background jobs
 
 | Method | Path | Description |
 |--------|------|-------------|
+| POST | `/library/scan` | See above |
 | POST | `/library/covers/fetch` | Start a background job fetching a cover for every game without one → 202 + job. 409 `job_running` while one is active, 409 `feature_disabled` when `ONLINE_METADATA=false` |
 | GET | `/library/jobs` | Recent jobs, newest first |
 | GET | `/library/jobs/{id}` | `{ id, kind, status (queued/running/done/failed), total, done, counters: { fetched, not_found, skipped, failed }, errors, created_at, started_at, finished_at }` |

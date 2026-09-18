@@ -141,8 +141,11 @@ def is_extension_valid_for(system: GameSystem, extension: str) -> bool:
     return extension.lower() in SYSTEMS[system].extensions
 
 
-# Files that describe other files rather than containing game data themselves.
-CONTAINER_EXTENSIONS: frozenset[str] = frozenset({".cue"})
+# Files that describe other files rather than containing game data themselves,
+# in the order the scanner reads them: a playlist (.m3u) names cue sheets,
+# a cue sheet names its tracks.
+CONTAINER_ORDER: tuple[str, ...] = (".m3u", ".cue")
+CONTAINER_EXTENSIONS: frozenset[str] = frozenset(CONTAINER_ORDER)
 
 
 def all_extensions() -> frozenset[str]:

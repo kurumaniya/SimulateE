@@ -62,6 +62,8 @@ export const gamesApi = {
 export const libraryApi = {
   home: () => request<HomeResponse>("/library/home"),
   systems: () => request<SystemOut[]>("/systems"),
+  /** Scan the ROM directory in the background; poll the job for progress. */
+  scan: () => request<JobOut>("/library/scan", { method: "POST" }),
   /** Start a background job fetching a cover for every game without one. */
   fetchCovers: () => request<JobOut>("/library/covers/fetch", { method: "POST" }),
   job: (id: string) => request<JobOut>(`/library/jobs/${encodeURIComponent(id)}`),

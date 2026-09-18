@@ -92,9 +92,22 @@ const NDS_LAYOUTS: CoreScreenLayout[] = [
  */
 const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
   [GameSystem.GBA]: { ejsSystem: "gba", coreId: "mgba" },
-  [GameSystem.GB]: { ejsSystem: "gb", coreId: "gambatte" },
-  [GameSystem.GBC]: { ejsSystem: "gb", coreId: "gambatte" },
-  [GameSystem.NES]: { ejsSystem: "nes", coreId: "fceumm" },
+  // Gambatte looks gb_bios.bin / gbc_bios.bin up in its system directory
+  // when the bootloader option is on; without the files it boots as before.
+  [GameSystem.GB]: {
+    ejsSystem: "gb",
+    coreId: "gambatte",
+    biosMode: "system-dir",
+    defaultOptions: { gambatte_gb_bootloader: "enabled" },
+  },
+  [GameSystem.GBC]: {
+    ejsSystem: "gb",
+    coreId: "gambatte",
+    biosMode: "system-dir",
+    defaultOptions: { gambatte_gb_bootloader: "enabled" },
+  },
+  // FCEUmm reads disksys.rom from the system directory for FDS images.
+  [GameSystem.NES]: { ejsSystem: "nes", coreId: "fceumm", biosMode: "system-dir" },
   [GameSystem.SNES]: { ejsSystem: "snes", coreId: "snes9x" },
   [GameSystem.GENESIS]: { ejsSystem: "segaMD", coreId: "genesis_plus_gx" },
   [GameSystem.PS1]: { ejsSystem: "psx", coreId: "pcsx_rearmed" },
@@ -289,6 +302,11 @@ export class EmulatorJSAdapter implements EmulatorAdapter {
       let settled = false;
       const emulator = new EmulatorJS(`#${mount.id}`, ejsConfig);
       this.emulator = emulator;
+      // EmulatorJS 4.2.3 builds the disk menu (multi-disc .m3u sets) before it
+      // creates `allSettings`, and `menuOptionChanged("disk", …)` then throws
+      // "Cannot set properties of undefined". Creating the map first is enough;
+      // `setupSettingsMenu()` replaces it later as usual.
+      if (!emulator.allSettings) emulator.allSettings = {};
       // Expose the instance on its mount for debugging tools and e2e tests.
       (mount as HTMLElement & { __emulatorjs?: EjsInstance }).__emulatorjs = emulator;
       emulator.on("saveDatabaseLoaded", (fs) => {
