@@ -261,11 +261,15 @@ and L/R, C on the Genesis maps to the RetroPad A button):
 | Virtual | Key |
 |---------|-----|
 | D-pad | Arrow keys |
-| A | X |
-| B | Z |
+| A | Z |
+| B | X |
+| X / Y | A / S |
 | L / R | Q / E |
 | Start | Enter |
-| Select | Shift |
+| Select | V |
+
+(N64 uses its own scheme: A = X, B = S. Values read from `defaultControllers`
+in `emulator.js`; libretro ids 8/0/9/1 are A/B/X/Y.)
 
 ## Browser requirements
 

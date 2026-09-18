@@ -37,10 +37,11 @@ export const DEFAULT_GBA_BINDINGS: InputBinding[] = [
   { button: VirtualButton.DOWN, keyboard: "ArrowDown", gamepad: 13 },
   { button: VirtualButton.LEFT, keyboard: "ArrowLeft", gamepad: 14 },
   { button: VirtualButton.RIGHT, keyboard: "ArrowRight", gamepad: 15 },
-  { button: VirtualButton.A, keyboard: "x", gamepad: 0 },
-  { button: VirtualButton.B, keyboard: "z", gamepad: 1 },
+  // Keys from EmulatorJS `defaultControllers` (libretro ids 8=A, 0=B, 9=X, 1=Y).
+  { button: VirtualButton.A, keyboard: "z", gamepad: 0 },
+  { button: VirtualButton.B, keyboard: "x", gamepad: 1 },
   { button: VirtualButton.L, keyboard: "q", gamepad: 4 },
   { button: VirtualButton.R, keyboard: "e", gamepad: 5 },
   { button: VirtualButton.START, keyboard: "Enter", gamepad: 9 },
-  { button: VirtualButton.SELECT, keyboard: "Shift", gamepad: 8 },
+  { button: VirtualButton.SELECT, keyboard: "v", gamepad: 8 },
 ];
