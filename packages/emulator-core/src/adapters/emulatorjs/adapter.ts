@@ -131,6 +131,15 @@ const SYSTEM_BINDINGS: Partial<Record<GameSystem, SystemBinding>> = {
       melonds_boot_directly: "enabled",
     },
   },
+  // Yabause reads saturn_bios.bin from the system directory and falls back to
+  // its high-level BIOS without it. Battery saves are the console's internal
+  // backup RAM, which the core writes as its save file.
+  [GameSystem.SATURN]: { ejsSystem: "segaSaturn", coreId: "yabause", biosMode: "system-dir" },
+  // EmulatorJS hands an arcade set to the core zipped and under the last path
+  // segment of the ROM URL, which RetroWeb keeps equal to the set's file name
+  // (FBNeo identifies a game by that name). neogeo.zip, when installed, is
+  // written next to it.
+  [GameSystem.ARCADE]: { ejsSystem: "arcade", coreId: "fbneo", biosMode: "system-dir" },
   [GameSystem.PSP]: {
     ejsSystem: "psp",
     coreId: "ppsspp",

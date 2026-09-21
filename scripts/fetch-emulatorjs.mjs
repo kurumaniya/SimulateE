@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const VERSION = "4.2.3";
-const CORES = ["mgba", "gambatte", "fceumm", "snes9x", "genesis_plus_gx", "pcsx_rearmed", "mupen64plus_next", "parallel_n64", "melonds", "desmume2015", "ppsspp"];
+const CORES = ["mgba", "gambatte", "fceumm", "snes9x", "genesis_plus_gx", "pcsx_rearmed", "mupen64plus_next", "parallel_n64", "melonds", "desmume2015", "ppsspp", "yabause", "fbneo"];
 const REGISTRY = process.env.NPM_REGISTRY ?? "https://registry.npmjs.org";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

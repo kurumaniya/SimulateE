@@ -341,6 +341,13 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 * `apps/api/tests`: 48 pytest cases (detection, hashing, duplicates, path
   traversal, Range streaming, saves, sessions, uploads, enum sync with the
   TypeScript package).
+* Arcade and Saturn test content (`scripts/make-test-rom.py`): FBNeo only opens sets it
+  knows by file name, size and CRC32, so the arcade test is the set `minivadr` holding
+  RetroWeb's own Z80 program whose last four bytes are solved to collide with the listed
+  CRC32; the Saturn test is an ISO whose system area carries a hand-assembled SH-2
+  program at the address Yabause's high-level BIOS starts from. Neither contains any
+  original code. Both only draw, so their e2e case checks that the screen is painted and
+  that the automatic state resumes.
 * `e2e/play-flow.spec.ts` (Playwright): for every supported system, play →
   quit → battery save on server → replay restores it; plus resume for GBA. It
   uses the homebrew ROMs produced by `scripts/make-test-rom.py` (one per
@@ -375,6 +382,7 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | Battery save timing | Resolved before the emulator loads, applied before boot when the adapter can (`initialSaveApplied`), otherwise inject + reset after start | PPSSPP's `retro_reset` asserts on its never-joined boot thread; restoring before boot also removes a reboot for every core that can take it |
 | Proxy body size | `experimental.proxyClientMaxBodySize = 2gb` | Next.js drops rewritten request bodies over 10 MB; PPSSPP states are ~40 MB and ROM uploads larger |
 | Game identification | libretro-database DATs, digest → serial → name | No API key or account; the same naming as the thumbnail collection; serials recognise translated ROMs that no digest database can. Descriptions are not in these lists and stay out of scope until a keyed provider is wired |
+| Folder-only systems | `SystemInfo.folder_only` for Saturn and Arcade | Their extensions (`.cue`, `.iso`, `.zip`) belong to other systems or to nothing, and there is no cheap header to sniff; requiring the folder keeps every existing detection rule unchanged |
 | Cover art source | libretro-thumbnails over HTTP, on request only | No API key or account, names match the scanner's No-Intro file names, and a directory index allows fuzzy matching; nothing is fetched behind the user's back |
 | Background jobs | In-process thread + polled counters | Enough for one server process and a single user; a queue would add a dependency for no gain today |
 | Multi-disc sets | `.m3u` is the primary file; discs adopt the first disc's existing game | Keeps saves when a playlist is added later; RetroArch's disk control handles swapping so no RetroWeb-level disc UI is needed |

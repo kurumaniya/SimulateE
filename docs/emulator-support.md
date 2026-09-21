@@ -21,6 +21,9 @@ wired/tested here yet, **planned** = not started.
 | Nintendo 64 | `n64` | `.z64`, `.n64`, `.v64` | EmulatorJS | Mupen64Plus-Next (GLideN64, WebGL2); ParaLLEl-N64 available via `adapterOptions.retroarchCore` | **working** (Phase 3) | Needs WebGL2. Slow without GPU acceleration (headless CI runs at a few fps) |
 | Nintendo DS | `nds` | `.nds` | EmulatorJS | melonDS (DeSmuME 2015 also fetched, not wired) | **working** (Phase 4) | Eight screen layouts switchable while playing; touch via mouse or finger. Runs on FreeBIOS unless `bios7.bin`, `bios9.bin` and `firmware.bin` are uploaded. DSi mode, microphone and Wi-Fi are not exposed. The core writes the cart save ~3 s after the game's last write, so quitting within that window can lose the very last save |
 | PSP | `psp` | `.iso`, `.cso`, `.pbp` (also `.elf`/`.prx` homebrew) | EmulatorJS | PPSSPP (threaded build only; WebGL2) | **working** (Phase 5) | Needs a cross-origin-isolated page (COOP/COEP, served by default) and WebGL2. Saves are the memory stick's `PSP/SAVEDATA` tree packed as a tar. Save states are ~40 MB. Software-rendered headless runs are slow; a GPU is expected for real games |
+| Sega Saturn | `saturn` | `.cue`+`.bin`, `.iso`, `.ccd`+`.img`, `.m3u` | EmulatorJS | Yabause | **working** (Phase 11) | Folder-only detection (`roms/saturn/`). Boots through the high-level BIOS unless `saturn_bios.bin` is uploaded. Software renderer: limited compatibility and speed with commercial games. No `.chd` |
+| Arcade | `arcade` | `.zip` (FBNeo ROM set) | EmulatorJS | FBNeo | **working** (Phase 11) | Folder-only detection (`roms/arcade/`). EmulatorJS passes the archive to the core unopened, named after the last segment of the ROM URL, which RetroWeb keeps equal to the set name. `neogeo.zip` is written next to the game when installed. Split clone sets (parent needed) are not wired: EmulatorJS has `gameParentUrl`, RetroWeb does not know parents yet. No battery save |
+| Dreamcast | — | — | — | — | **blocked** | EmulatorJS has no Dreamcast core: there is no `@emulatorjs/core-flycast` package in any release (checked against 4.2.3, the latest) |
 
 ## EmulatorJS integration (verified against 4.2.3 source)
 
@@ -34,7 +37,8 @@ pinned tarballs from the npm registry and lays them out as EmulatorJS expects:
 apps/web/public/emulatorjs/
   loader.js, emulator.css, src/*.js, localization/*.json, compression/*
   cores/<core>-wasm.data               (mgba, gambatte, fceumm, snes9x, genesis_plus_gx,
-                                        pcsx_rearmed, mupen64plus_next, parallel_n64)
+                                        pcsx_rearmed, mupen64plus_next, parallel_n64,
+                                        melonds, desmume2015, ppsspp, yabause, fbneo)
   cores/<core>-legacy-wasm.data        (WebGL1 fallback)
   cores/<core>-thread-wasm.data        (used when threads are enabled)
   cores/<core>-thread-legacy-wasm.data
@@ -53,6 +57,8 @@ from `getCores()` in `emulator.js`:
 | `genesis` | `segaMD` | `genesis_plus_gx` |
 | `ps1` | `psx` | `pcsx_rearmed` |
 | `n64` | `n64` | `mupen64plus_next` (`parallel_n64` on request) |
+| `saturn` | `segaSaturn` | `yabause` |
+| `arcade` | `arcade` | `fbneo` |
 
 Facts the adapter relies on (all read from `data/src/emulator.js`,
 `GameManager.js`, `loader.js`):

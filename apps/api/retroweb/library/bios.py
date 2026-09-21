@@ -95,6 +95,25 @@ BIOS_REGISTRY: dict[GameSystem, SystemBiosInfo] = {
             BiosSpec("disksys.rom", "Famicom Disk System BIOS", "ca30b50f880eb660a320674ed365ef7a"),
         ),
     ),
+    GameSystem.SATURN: SystemBiosInfo(
+        system=GameSystem.SATURN,
+        note=(
+            "Yabause starts games with its built-in high-level BIOS when nothing is "
+            "installed. A real Saturn BIOS improves compatibility considerably."
+        ),
+        optional=True,
+        # No digest: Japanese, US and European revisions are all accepted.
+        files=(BiosSpec("saturn_bios.bin", "Sega Saturn BIOS (512 KiB)", None),),
+    ),
+    GameSystem.ARCADE: SystemBiosInfo(
+        system=GameSystem.ARCADE,
+        note=(
+            "Only Neo Geo games need it: FBNeo looks neogeo.zip up next to the game. "
+            "Other boards run without any BIOS set."
+        ),
+        optional=True,
+        files=(BiosSpec("neogeo.zip", "Neo Geo BIOS set", None),),
+    ),
 }
 
 MAX_BIOS_BYTES = 8 * 1024 * 1024

@@ -95,9 +95,10 @@ def detect_system(key: str, header: bytes) -> Detection:
         folder_system = system_for_folder(folder) or folder_system
 
     by_extension = systems_for_extension(extension) if extension else []
+    known_extension = bool(extension and systems_for_extension(extension, include_folder_only=True))
 
     if folder_system is not None:
-        if extension in SYSTEMS[folder_system].extensions or not by_extension:
+        if extension in SYSTEMS[folder_system].extensions or not known_extension:
             return Detection(folder_system, "folder")
 
     if len(by_extension) == 1 and extension not in SYSTEMS[by_extension[0]].ambiguous_extensions:

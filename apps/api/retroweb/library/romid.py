@@ -38,6 +38,9 @@ _GAME_CODE = re.compile(rb"^[A-Z0-9]{4}$")
 _PS1_BOOT = re.compile(rb"BOOT\d?\s*=\s*cdrom\d?:\\*([A-Z]{4})[_-](\d{3})\.(\d{2})", re.IGNORECASE)
 # UMD_DATA.BIN: "ULUS-10041|0123456789ABCDEF|0001|G"
 _PSP_DISC_ID = re.compile(rb"([A-Z]{4})-(\d{5})\|")
+# Saturn system ID in the first sector: hardware id, maker id (16 bytes each),
+# then the product number and version: "T-8106G   V1.000".
+_SATURN_ID = re.compile(rb"SEGA SEGASATURN .{16}([A-Z0-9][A-Z0-9 -]{9})V\d", re.DOTALL)
 
 _CARTRIDGE_SERIAL_OFFSETS: dict[GameSystem, int] = {
     GameSystem.GBA: 0xAC,
@@ -45,7 +48,7 @@ _CARTRIDGE_SERIAL_OFFSETS: dict[GameSystem, int] = {
     GameSystem.N64: 0x3B,
     GameSystem.GBC: 0x13F,
 }
-DISC_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.PS1, GameSystem.PSP})
+DISC_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.PS1, GameSystem.PSP, GameSystem.SATURN})
 
 
 @dataclass(frozen=True)
@@ -90,6 +93,10 @@ def _disc_serial(system: GameSystem, head: bytes) -> str | None:
         match = _PSP_DISC_ID.search(head)
         if match:
             return f"{match.group(1).decode()}-{match.group(2).decode()}"
+    if system is GameSystem.SATURN:
+        match = _SATURN_ID.search(head)
+        if match:
+            return match.group(1).decode("ascii").strip() or None
     return None
 
 

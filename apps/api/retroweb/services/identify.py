@@ -65,9 +65,11 @@ SYSTEM_DATS: dict[GameSystem, tuple[str, tuple[str, ...]]] = {
     GameSystem.NDS: ("Nintendo - Nintendo DS", ("no-intro",)),
     GameSystem.PS1: ("Sony - PlayStation", ("redump",)),
     GameSystem.PSP: ("Sony - PlayStation Portable", ("redump", "no-intro")),
+    GameSystem.SATURN: ("Sega - Saturn", ("redump",)),
+    GameSystem.ARCADE: ("FBNeo - Arcade Games", ("fbneo-split",)),
 }
 # Systems whose games are found by the ROM set's file name, not its content.
-SET_NAME_SYSTEMS: frozenset[GameSystem] = frozenset()
+SET_NAME_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.ARCADE})
 
 ATTRIBUTE_FOLDERS = ("developer", "publisher", "releaseyear", "releasemonth")
 
@@ -326,6 +328,9 @@ def identify_game(
     game.identified_by = how
     parsed = FilenameMetadataProvider().from_filename(release.name + primary.extension, system)
     if parsed is not None:
+        if system in SET_NAME_SYSTEMS and game.title == primary.filename.rsplit(".", 1)[0]:
+            # The scanner could only title the game after its set ("sf2").
+            game.title = parsed.title
         if not game.title_en:
             game.title_en = parsed.title
         if not game.region and parsed.region:

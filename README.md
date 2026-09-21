@@ -16,7 +16,7 @@ Open it on another device and resume.
 
 ## Features (implemented)
 
-- Eight systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis, PlayStation, Nintendo 64
+- Twelve systems playable in the browser: GBA, GB, GBC, NES, SNES, Genesis, PlayStation, Nintendo 64, Nintendo DS, PSP, Sega Saturn and Arcade (FBNeo)
 - BIOS management: upload the BIOS images you own in Settings, verified against known digests; nothing is downloaded for you
 - Multi-file games: a `.cue` sheet and the `.bin` tracks it names are one library entry; an `.m3u` groups a multi-disc set (discs that already had entries are merged, saves kept)
 - Library scanning of `data/roms/<system>/` with SHA-256 based duplicate detection, run as a background job with progress
@@ -49,7 +49,9 @@ Open it on another device and resume.
 | Nintendo 64 | **working** (EmulatorJS · Mupen64Plus-Next; needs WebGL2) |
 | Nintendo DS | **working** (EmulatorJS · melonDS; screen layouts, mouse/finger touch; BIOS optional) |
 | PSP | **working** (EmulatorJS · PPSSPP; needs a cross-origin-isolated page and WebGL2) |
-| Dreamcast, Saturn, Arcade | later |
+| Sega Saturn | **working** (EmulatorJS · Yabause; `.cue`+`.bin`, `.iso`, `.ccd`; BIOS optional, compatibility is limited, see below) |
+| Arcade | **working** (EmulatorJS · FBNeo; zipped ROM sets under their exact set name; `neogeo.zip` for Neo Geo games) |
+| Dreamcast | not possible yet: EmulatorJS ships no Dreamcast core (no `flycast` package in any release), and no other browser build is mature enough to integrate |
 
 Details and known issues: [docs/emulator-support.md](docs/emulator-support.md).
 
@@ -137,6 +139,8 @@ Put files you own under the system folder:
 data/roms/gba/Some Game (USA).gba
 data/roms/ps1/Some Game (USA).cue      + the .bin tracks it references
 data/roms/n64/Some Game (USA).z64
+data/roms/saturn/Some Game (USA).cue   + its .bin tracks (or a single .iso)
+data/roms/arcade/sf2.zip               an FBNeo ROM set, zipped, under its set name
 ```
 
 Then **Settings → Scan library** (or `POST /api/games/scan`). The scanner
@@ -164,6 +168,9 @@ MD5; an unknown digest is kept but flagged.
 - **Nintendo DS**: optional. melonDS boots games directly with its built-in
   FreeBIOS. Upload `bios7.bin`, `bios9.bin` and `firmware.bin` (all three)
   for full compatibility; no digests are checked for these.
+- **Sega Saturn**: optional `saturn_bios.bin`. Without it Yabause uses a high-level BIOS
+  that starts fewer games.
+- **Arcade**: `neogeo.zip` for Neo Geo games only; it is handed to FBNeo next to the game.
 - **GBA, Nintendo 64, PSP**: no BIOS needed.
 - **Game Boy / Game Boy Color**: optional `gb_bios.bin` / `gbc_bios.bin` boot
   ROMs; when installed Gambatte plays the start-up logo.
@@ -254,6 +261,17 @@ headers. Configuration is done through `.env` (see `.env.example`).
   opened from the 🎮 button in the RetroWeb toolbar (or EmulatorJS's bottom bar).
 - PS1 `.chd`/`.iso` images cannot be opened by the EmulatorJS PCSX-ReARMed build; use `.cue`+`.bin` or `.pbp`. Disc swapping for `.m3u` sets uses EmulatorJS's *Disks* menu in the bottom bar.
 - Nintendo 64 needs WebGL2 and is slow without GPU acceleration.
+- Sega Saturn and Arcade files are recognised **only inside `roms/saturn/` and
+  `roms/arcade/`** (aliases: `segasaturn`, `ss`; `fbneo`, `fba`, `neogeo`): `.cue`, `.iso`
+  and `.zip` say nothing about the system on their own. A `.zip` anywhere else is ignored.
+- Arcade: FBNeo finds a game by its set name, so keep `sf2.zip` called `sf2.zip` (the
+  library shows the real title after **Identify games**). Sets must match the FBNeo
+  version EmulatorJS 4.2.3 ships. Clone sets that need their parent's files (split sets)
+  are not supported yet: use parent sets or non-merged sets. Arcade boards keep no battery
+  save; the automatic resume state and save slots work as everywhere else.
+- Sega Saturn: Yabause is the only Saturn core EmulatorJS has. It is an old, software-
+  rendered emulator: many commercial games run slowly or not at all, more so without a
+  real BIOS. `.chd` images are not supported.
 - PSP: PPSSPP only runs cross-origin isolated (the app sends the headers;
   a reverse proxy in front of it must keep them) with WebGL2. Saves are the
   whole `PSP/SAVEDATA` tree of a per-browser memory stick, packed as a tar;
@@ -286,6 +304,7 @@ libretro-thumbnails collection, whose contents are maintained by that project.
 8. ~~Phase 8 — Touch: on-screen controls verified, toolbar reachable by tap, Controls button for remapping~~ done
 9. ~~Phase 9 — Accounts: sign-in, admin role, per-user saves and favorites~~ done
 10. ~~Phase 10 — Game identification by digest / serial / name (libretro-database): titles, developer, publisher, year, covers for renamed and translated ROMs~~ done
-10. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions
+11. ~~Phase 11 — Sega Saturn (Yabause) and Arcade (FBNeo)~~ done
+12. Later — S3/WebDAV storage; game descriptions (needs a keyed provider); arcade clone sets; Dreamcast once a browser core exists
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

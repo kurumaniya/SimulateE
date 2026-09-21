@@ -33,6 +33,8 @@ THUMBNAIL_SYSTEM_DIRS: dict[GameSystem, str] = {
     GameSystem.PS1: "Sony - PlayStation",
     GameSystem.PSP: "Sony - PlayStation Portable",
     GameSystem.NDS: "Nintendo - Nintendo DS",
+    GameSystem.SATURN: "Sega - Saturn",
+    GameSystem.ARCADE: "FBNeo - Arcade Games",
 }
 
 BOXART_DIR = "Named_Boxarts"

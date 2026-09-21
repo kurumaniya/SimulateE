@@ -15,6 +15,8 @@ export enum GameSystem {
   PS1 = "ps1",
   PSP = "psp",
   NDS = "nds",
+  SATURN = "saturn",
+  ARCADE = "arcade",
 }
 
 export interface SystemInfo {
@@ -109,6 +111,24 @@ export const SYSTEMS: Record<GameSystem, SystemInfo> = {
     manufacturer: "Nintendo",
     extensions: [".nds"],
     accent: "#c2c8d0",
+  },
+  [GameSystem.SATURN]: {
+    id: GameSystem.SATURN,
+    name: "Sega Saturn",
+    shortName: "Saturn",
+    manufacturer: "Sega",
+    // Recognised only inside roms/saturn/: every extension is shared with PS1 or PSP.
+    extensions: [".cue", ".ccd", ".iso", ".m3u", ".img", ".bin"],
+    accent: "#4a6fd0",
+  },
+  [GameSystem.ARCADE]: {
+    id: GameSystem.ARCADE,
+    name: "Arcade",
+    shortName: "Arcade",
+    manufacturer: "Various",
+    // FBNeo ROM sets, kept zipped under their exact set name (roms/arcade/sf2.zip).
+    extensions: [".zip"],
+    accent: "#e0a030",
   },
 };
 

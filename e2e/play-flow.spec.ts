@@ -133,10 +133,15 @@ function expectTouchLog(save: Buffer, touches: number) {
   expect(Math.abs(save[0x13] - 96)).toBeLessThan(24);
 }
 
-async function findTestGame(request: Page["request"], system: string): Promise<string> {
-  const list = await (
-    await request.get(`${API}/api/games?q=${encodeURIComponent(TEST_TITLE)}&system=${system}`)
-  ).json();
+async function findTestGame(
+  request: Page["request"],
+  system: string,
+  title: string | null = TEST_TITLE,
+): Promise<string> {
+  // An arcade set is titled after its set name (or, once identified, the game
+  // it stands in for), so that system is looked up without a title.
+  const query = title ? `q=${encodeURIComponent(title)}&` : "";
+  const list = await (await request.get(`${API}/api/games?${query}system=${system}`)).json();
   expect(list.total, `test ROM for ${system} must be scanned`).toBeGreaterThan(0);
   // Regenerated test ROMs leave stale "missing" entries behind in a dev library.
   const playable = list.items.filter((game: { rom_missing: boolean }) => !game.rom_missing);
@@ -254,6 +259,55 @@ for (const { system, probeOffset } of INJECTION_SYSTEMS) {
     const after = Buffer.from(await (await request.get(`${API}/api/saves/${saves[0].id}/download`)).body());
     expect(after.length).toBe(original.length);
     expect(after.readUInt32BE(probeOffset)).toBe(0x52574542);
+  });
+}
+
+/**
+ * Share of the emulator canvas that is not black, measured on a screenshot
+ * (the WebGL back buffer itself cannot be read after the frame is presented).
+ */
+async function litFraction(page: Page): Promise<number> {
+  const png = await page.locator("canvas.ejs_canvas").screenshot();
+  return page.evaluate(async (base64) => {
+    const blob = await (await fetch(`data:image/png;base64,${base64}`)).blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    let lit = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] + data[i + 1] + data[i + 2] > 96) lit++;
+    }
+    return lit / (data.length / 4);
+  }, png.toString("base64"));
+}
+
+/**
+ * Systems whose test program keeps no battery save: it only draws. The arcade
+ * set is FBNeo's `minivadr` carrying RetroWeb's own Z80 program; the Saturn
+ * disc boots through Yabause's high-level BIOS.
+ */
+const DRAW_ONLY_SYSTEMS: { system: string; title: string | null }[] = [
+  { system: "arcade", title: null },
+  { system: "saturn", title: TEST_TITLE },
+];
+
+for (const { system, title } of DRAW_ONLY_SYSTEMS) {
+  test(`${system}: boots, draws, and resumes from the automatic state`, async ({ page, request }) => {
+    const gameId = await findTestGame(request, system, title);
+    await page.goto(`/play/${gameId}`);
+    await waitForRunning(page);
+    await page.waitForTimeout(3000);
+    expect(await litFraction(page), "the test program paints the screen").toBeGreaterThan(0.2);
+    await quit(page, gameId);
+
+    const detail = await (await request.get(`${API}/api/games/${gameId}`)).json();
+    expect(detail.has_auto_state).toBe(true);
+    await page.goto(`/play/${gameId}?resume=1`);
+    await waitForRunning(page);
+    await expect(page.getByText("Resumed where you left off")).toBeVisible({ timeout: 15_000 });
+    await quit(page, gameId);
   });
 }
 

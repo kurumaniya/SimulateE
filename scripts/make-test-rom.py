@@ -21,6 +21,8 @@ Where the counter lives in the battery save file (index into the .sav/.srm):
               test injects bytes into the memory card and checks they survive;
               written as a two-disc .m3u set so multi-disc grouping is covered)
     n64      (same: paints the screen; save round-trip checked by injection)
+    saturn   (paints the back screen; boots through Yabause's high-level BIOS)
+    arcade   (FBNeo set `minivadr` carrying RetroWeb's own Z80 program; see below)
     nds      byte 0      (EEPROM; magic "RWEB" at bytes 4-7; each touch of the
               bottom screen is logged at 0x10 as 'T', touch number, x, y)
 
@@ -638,6 +640,187 @@ def build_psp() -> bytes:
     return header + sfo + PSP_PROGRAM
 
 
+# ---------------------------------------------------------------------------
+# Arcade (FBNeo). FBNeo only opens sets it knows, and knows a set by the name,
+# size and CRC32 of every file in it. The carrier here is `minivadr` (Taito
+# Mini Vaders): a single 8 KiB Z80 ROM and a 1-bit frame buffer that is plain
+# RAM at 0xA000. The ROM below is RetroWeb's own program (it fills the frame
+# buffer with a stripe pattern and idles); its last four bytes are solved so
+# the file's CRC32 equals the one FBNeo lists for the set. Nothing of the
+# original game is present, the digest merely collides on purpose.
+#
+#   0000  F3          di
+#   0001  31 00 C0    ld   sp,0xC000
+#   0004  21 00 A0    ld   hl,0xA000      ; frame buffer, 256x224, 1 bpp
+#   0007  01 00 20    ld   bc,0x2000
+#   000A  7D          ld   a,l
+#   000B  AC          xor  h
+#   000C  77          ld   (hl),a
+#   000D  23          inc  hl
+#   000E  0B          dec  bc
+#   000F  78          ld   a,b
+#   0010  B1          or   c
+#   0011  20 F7       jr   nz,0x000A
+#   0013  18 FE       jr   0x0013
+# ---------------------------------------------------------------------------
+ARCADE_SET = "minivadr"
+ARCADE_ROM_NAME = "d26-01.ic7"
+ARCADE_ROM_SIZE = 8192
+ARCADE_ROM_CRC32 = 0xA96C823D
+ARCADE_PROGRAM = bytes.fromhex("f33100c02100a00100207dac77230b78b120f718fe")
+
+
+def _crc32_table() -> list[int]:
+    table = []
+    for index in range(256):
+        value = index
+        for _ in range(8):
+            value = (value >> 1) ^ 0xEDB88320 if value & 1 else value >> 1
+        table.append(value)
+    return table
+
+
+def forge_crc32_tail(prefix: bytes, wanted: int) -> bytes:
+    """Four bytes that make ``crc32(prefix + tail) == wanted``."""
+    import zlib
+
+    table = _crc32_table()
+    by_top_byte = {entry >> 24: index for index, entry in enumerate(table)}
+    # Walk the register backwards from the wanted final state over four bytes.
+    state = wanted ^ 0xFFFFFFFF
+    for _ in range(4):
+        index = by_top_byte[state >> 24]
+        state = (((state ^ table[index]) << 8) & 0xFFFFFFFF) | index
+    current = zlib.crc32(prefix) ^ 0xFFFFFFFF
+    tail = struct.pack("<I", state ^ current)
+    assert zlib.crc32(prefix + tail) == wanted
+    return tail
+
+
+def build_arcade() -> bytes:
+    import io
+    import zipfile
+
+    body = ARCADE_PROGRAM.ljust(ARCADE_ROM_SIZE - 4, b"\0")
+    rom = body + forge_crc32_tail(body, ARCADE_ROM_CRC32)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        entry = zipfile.ZipInfo(ARCADE_ROM_NAME, date_time=(2026, 1, 1, 0, 0, 0))
+        archive.writestr(entry, rom)
+    return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Sega Saturn. Yabause without a BIOS loads the disc's system area (IP) to
+# 0x06002000, the first file of the root directory to the "1st read" address,
+# and starts the master SH-2 at IP + 0xE00. The program lives there: it turns
+# the display on and points VDP2's back screen at one colour word in VRAM.
+# No Sega code is included (a real console would reject the disc: the
+# security code and area symbols are absent), so it only boots through an
+# emulator's high-level BIOS.
+# ---------------------------------------------------------------------------
+SATURN_IP_BASE = 0x06002000
+SATURN_ENTRY_OFFSET = 0xE00
+SATURN_FIRST_READ = 0x06004000
+
+
+def _sh2_program() -> bytes:
+    """Hand-assembled SH-2 (big-endian). PC-relative loads: ``mov.l`` reads
+    ``(pc & ~3) + 4 + disp * 4``, ``mov.w`` reads ``pc + 4 + disp * 2``."""
+    literals_at = 0x1C
+    longs = [0x25F80000, 0x25E00000, 0x25F800AC]  # TVMD, VRAM, BKTAU
+    words = [0x8000, 0x7FE0]  # DISP on, back screen colour (cyan)
+    long_at = {value: literals_at + 4 * i for i, value in enumerate(longs)}
+    word_at = {value: literals_at + 4 * len(longs) + 2 * i for i, value in enumerate(words)}
+
+    def mov_l(pc: int, value: int, reg: int) -> int:
+        disp = (long_at[value] - ((pc & ~3) + 4)) // 4
+        return 0xD000 | (reg << 8) | disp
+
+    def mov_w(pc: int, value: int, reg: int) -> int:
+        disp = (word_at[value] - (pc + 4)) // 2
+        return 0x9000 | (reg << 8) | disp
+
+    store_r0_at_r1 = 0x2101  # mov.w r0,@r1
+    code = [
+        mov_l(0x00, 0x25F80000, 1),
+        mov_w(0x02, 0x8000, 0),
+        store_r0_at_r1,  # TVMD = display on
+        mov_l(0x06, 0x25E00000, 1),
+        mov_w(0x08, 0x7FE0, 0),
+        store_r0_at_r1,  # VRAM[0] = colour
+        mov_l(0x0C, 0x25F800AC, 1),
+        0xE000,  # mov #0,r0
+        store_r0_at_r1,  # BKTAU = 0
+        0x7102,  # add #2,r1
+        store_r0_at_r1,  # BKTAL = 0: back screen table at VRAM 0
+        0xAFFE,  # bra self
+        0x0009,  # nop (delay slot)
+        0x0009,
+    ]
+    assert len(code) * 2 == literals_at
+    blob = b"".join(struct.pack(">H", op) for op in code)
+    blob += b"".join(struct.pack(">I", value) for value in longs)
+    blob += b"".join(struct.pack(">H", value) for value in words)
+    return blob
+
+
+def build_saturn() -> bytes:
+    program = _sh2_program()
+    ip = bytearray(16 * CD_SECTOR)
+    ip[0x00:0x10] = b"SEGA SEGASATURN "
+    ip[0x10:0x20] = b"RETROWEB        "
+    ip[0x20:0x30] = b"RWEB-00001V1.000"
+    ip[0x30:0x40] = b"20260101CD-1/1  "
+    ip[0x40:0x50] = b"JTUBKAEL        "
+    ip[0x50:0x60] = b"J               "
+    ip[0x60:0xD0] = b"RETROWEB TEST".ljust(0x70)
+    struct.pack_into(">I", ip, 0xE0, 0x1000)  # IP size
+    struct.pack_into(">I", ip, 0xE8, 0x06002000)  # master stack
+    struct.pack_into(">I", ip, 0xEC, 0x06001000)  # slave stack
+    struct.pack_into(">I", ip, 0xF0, SATURN_FIRST_READ)
+    ip[SATURN_ENTRY_OFFSET : SATURN_ENTRY_OFFSET + len(program)] = program
+
+    first_read = bytes.fromhex("affe0009").ljust(CD_SECTOR, b"\0")  # bra self; nop
+    struct.pack_into(">I", ip, 0xF4, len(first_read))
+    root_lba, file_lba = 20, 21
+    total = file_lba + 1 + 150  # some lead-out room for the track length check
+    root = (
+        _iso_dir_record(b"\0", root_lba, CD_SECTOR, 2)
+        + _iso_dir_record(b"\1", root_lba, CD_SECTOR, 2)
+        + _iso_dir_record(b"MAIN.BIN;1", file_lba, len(first_read), 0)
+    )
+    pvd = bytearray(CD_SECTOR)
+    pvd[0] = 1
+    pvd[1:6] = b"CD001"
+    pvd[6] = 1
+    pvd[8:40] = b"SEGA SEGASATURN".ljust(32)
+    pvd[40:72] = b"RETROWEB".ljust(32)
+    pvd[80:88] = _both_endian32(total)
+    pvd[120:124] = _both_endian16(1)
+    pvd[124:128] = _both_endian16(1)
+    pvd[128:132] = _both_endian16(CD_SECTOR)
+    pvd[132:140] = _both_endian32(10)
+    struct.pack_into("<I", pvd, 140, 18)
+    struct.pack_into(">I", pvd, 148, 19)
+    root_record = _iso_dir_record(b"\0", root_lba, CD_SECTOR, 2)
+    pvd[156 : 156 + len(root_record)] = root_record
+    path_l = bytes([1, 0]) + struct.pack("<I", root_lba) + struct.pack("<H", 1) + b"\0\0"
+    path_m = bytes([1, 0]) + struct.pack(">I", root_lba) + struct.pack(">H", 1) + b"\0\0"
+    sectors: dict[int, bytes] = {
+        16: bytes(pvd),
+        17: bytes([255]) + b"CD001" + bytes([1]),
+        18: path_l,
+        19: path_m,
+        root_lba: root,
+        file_lba: first_read,
+    }
+    image = bytearray(ip)
+    for lba in range(16, total):
+        image += sectors.get(lba, b"").ljust(CD_SECTOR, b"\0")
+    return bytes(image)
+
+
 BUILDERS = {
     "gba": ("RetroWeb Test (World).gba", build_gba),
     "gb": ("RetroWeb Test (World).gb", lambda: build_gb(color=False)),
@@ -649,6 +832,9 @@ BUILDERS = {
     "n64": ("RetroWeb Test (World).z64", build_n64),
     "nds": ("RetroWeb Test (World).nds", build_nds),
     "psp": ("RetroWeb Test (World).pbp", build_psp),
+    "saturn": ("RetroWeb Test (World).iso", build_saturn),
+    # FBNeo finds a game by its set name: the archive cannot be called anything else.
+    "arcade": (f"{ARCADE_SET}.zip", build_arcade),
 }
 # Extra files written next to the primary one.
 COMPANIONS: dict[str, list[tuple[str, Callable[[], bytes]]]] = {
