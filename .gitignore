@@ -37,3 +37,7 @@ playwright-report/
 
 # Ad-hoc debugging scripts
 .debug-*.mjs
+
+# Server-side build output
+apps/api/build/
+run/

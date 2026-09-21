@@ -278,6 +278,32 @@ thread per job, one active job per kind, progress counters polled through
 simple; it is also the hook for making library scans asynchronous later.
 `ONLINE_METADATA=false` turns the endpoints off (409 `feature_disabled`).
 
+## 9d. Game identification
+
+`services/identify.py` names a game from the public release lists (clrmamepro DATs in
+libretro-database: `metadat/no-intro`, `metadat/redump`, plus the attribute lists
+`developer`, `publisher`, `releaseyear`, `releasemonth` keyed by CRC).
+`library/datfile.py` is the tokenizer/parser; `library/romid.py` fingerprints a file
+in one streaming pass: CRC32 + SHA-1 computed the way the databases do (iNES and SNES
+copier headers dropped, N64 byte order normalised) and the serial read from the
+cartridge header or, for discs, from `SYSTEM.CNF` / `UMD_DATA.BIN` in the first 8 MB.
+For a cue/m3u game the first data track is fingerprinted.
+
+`SystemIndex.find` tries digest → serial → file name. Several releases share a serial
+(revisions, betas); `closest_release` (the scorer cover art already used) picks the one
+whose tags fit the file name, penalising beta/proto/demo. The result is stored on the
+game (`canonical_name`, `identified_by`) and file (`crc32`, `sha1`, `serial`; migration
+0004) so nothing is hashed twice; only empty metadata fields are filled, and the
+user's title is never replaced (a CJK title is copied to `title_zh` / `title_ja`).
+`fetch_cover` identifies first and then asks the thumbnail server for the canonical
+name, which is what makes covers work for renamed files.
+
+Lists are cached on disk (`<DATA_PATH>/cache/gamedb`, TTL `GAMEDB_TTL_DAYS`, a 404 is
+cached as an empty file) and parsed into memory per system on first use; a network
+failure falls back to a stale copy, and attribute lists are best-effort. This cache
+is the one place that uses the filesystem directly instead of a `StorageProvider`:
+it is disposable and not user data.
+
 ## 10. Request flow for playing a game
 
 ```
@@ -348,6 +374,7 @@ Escape shows it. Errors are rendered by code (`rom_missing`, `assets_missing`,
 | PSP saves | `PSP/SAVEDATA` tree packed as an uncompressed tar, one blob per game | Keeps the server's one-blob battery model; PPSSPP has no SRAM; the tree is emptied before each boot because the browser memory stick is shared |
 | Battery save timing | Resolved before the emulator loads, applied before boot when the adapter can (`initialSaveApplied`), otherwise inject + reset after start | PPSSPP's `retro_reset` asserts on its never-joined boot thread; restoring before boot also removes a reboot for every core that can take it |
 | Proxy body size | `experimental.proxyClientMaxBodySize = 2gb` | Next.js drops rewritten request bodies over 10 MB; PPSSPP states are ~40 MB and ROM uploads larger |
+| Game identification | libretro-database DATs, digest → serial → name | No API key or account; the same naming as the thumbnail collection; serials recognise translated ROMs that no digest database can. Descriptions are not in these lists and stay out of scope until a keyed provider is wired |
 | Cover art source | libretro-thumbnails over HTTP, on request only | No API key or account, names match the scanner's No-Intro file names, and a directory index allows fuzzy matching; nothing is fetched behind the user's back |
 | Background jobs | In-process thread + polled counters | Enough for one server process and a single user; a queue would add a dependency for no gain today |
 | Multi-disc sets | `.m3u` is the primary file; discs adopt the first disc's existing game | Keeps saves when a playlist is added later; RetroArch's disk control handles swapping so no RetroWeb-level disc UI is needed |

@@ -29,6 +29,10 @@ export interface GameFile {
   extension: string;
   size_bytes: number;
   sha256: string;
+  /** Database-style digests and the product code read from the image (set once identified). */
+  crc32: string | null;
+  sha1: string | null;
+  serial: string | null;
   region: string | null;
   label: string | null;
   is_primary: boolean;
@@ -44,6 +48,9 @@ export interface GameDetail extends GameSummary {
   publisher: string | null;
   release_date: string | null;
   description: string | null;
+  /** Release name in the No-Intro / Redump database; null while unidentified. */
+  canonical_name: string | null;
+  identified_by: "hash" | "serial" | "name" | null;
   rom_filename: string | null;
   rom_hash: string | null;
   rom_size: number | null;

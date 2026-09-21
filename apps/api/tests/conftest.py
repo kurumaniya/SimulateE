@@ -4,12 +4,14 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from retroweb.api.deps import settings_dep
 from retroweb.core.config import Settings
 from retroweb.main import create_app
+from retroweb.services.identify import GameIdentifier
 
 GBA_HEADER_FIXED_BYTE = 0xB2
 
@@ -19,6 +21,10 @@ def make_gba_rom(seed: bytes = b"retroweb-test", size: int = 4096) -> bytes:
     data = bytearray((seed * (size // len(seed) + 1))[:size])
     data[GBA_HEADER_FIXED_BYTE] = 0x96
     return bytes(data)
+
+
+def empty_game_database() -> httpx.MockTransport:
+    return httpx.MockTransport(lambda request: httpx.Response(404, text="not found"))
 
 
 @pytest.fixture
@@ -38,6 +44,7 @@ def settings(data_dir: Path, tmp_path: Path) -> Settings:
         max_rom_upload_bytes=1024 * 1024,
         session_heartbeat_grace_seconds=60,
         log_level="WARNING",
+        gamedb_base_url="https://gamedb.test",
     )
 
 
@@ -46,6 +53,8 @@ def client(settings: Settings) -> Iterator[TestClient]:
     app = create_app(settings)
     app.dependency_overrides[settings_dep] = lambda: settings
     with TestClient(app) as test_client:
+        # Tests never reach the real game database: by default it knows nothing.
+        app.state.identifier = GameIdentifier(settings, transport=empty_game_database())
         yield test_client
 
 

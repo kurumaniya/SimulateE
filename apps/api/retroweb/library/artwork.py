@@ -97,35 +97,46 @@ def _tokens(tags: Iterable[str]) -> set[str]:
     return {part.strip() for tag in tags for part in tag.split(",") if part.strip()}
 
 
+def _score(name: str, wanted_tags: list[str], wanted_tokens: set[str]) -> int:
+    tags = tags_of(name)
+    score = 10 * len(_tokens(tags) & wanted_tokens)
+    if tags and wanted_tags and tags[0] == wanted_tags[0]:
+        score += 5
+    for tag in tags:
+        if tag in wanted_tags:
+            score += 2
+            continue
+        score -= 1
+        if tag.startswith(_UNWANTED_TAGS):
+            score -= _UNWANTED_PENALTY
+    return score
+
+
+def closest_release(wanted: str, candidates: Iterable[str]) -> str | None:
+    """The candidate whose tags fit the file name ``wanted`` best.
+
+    Shared region / language tokens score highest, tags the wanted name lacks
+    cost a little, and beta/proto/demo style tags cost a lot unless the wanted
+    name carries them too. Ties resolve alphabetically so the choice is stable.
+    The candidates are assumed to be releases of the same game.
+    """
+    wanted_tags = tags_of(wanted)
+    wanted_tokens = _tokens(wanted_tags)
+    best: tuple[int, str] | None = None
+    for name in candidates:
+        score = _score(name, wanted_tags, wanted_tokens)
+        if best is None or score > best[0] or (score == best[0] and name < best[1]):
+            best = (score, name)
+    return best[1] if best else None
+
+
 def best_match(wanted: str, available: Iterable[str]) -> str | None:
     """Closest entry of ``available`` for the file name ``wanted``.
 
-    Only entries with the same normalised title qualify. Among those, shared
-    region / language tokens score highest, tags the wanted name lacks cost a
-    little, and beta/proto/demo style tags cost a lot unless the wanted name
-    carries them too. Ties resolve alphabetically so the choice is stable.
+    Only entries with the same normalised title qualify; among those
+    :func:`closest_release` decides.
     """
     title = normalize_title(wanted)
     if not title:
         return None
-    wanted_tags = tags_of(wanted)
-    wanted_tokens = _tokens(wanted_tags)
-    best: tuple[int, str] | None = None
-    for name in available:
-        if normalize_title(name) != title:
-            continue
-        tags = tags_of(name)
-        score = 10 * len(_tokens(tags) & wanted_tokens)
-        if tags and wanted_tags and tags[0] == wanted_tags[0]:
-            score += 5
-        for tag in tags:
-            if tag in wanted_tags:
-                score += 2
-                continue
-            score -= 1
-            if tag.startswith(_UNWANTED_TAGS):
-                score -= _UNWANTED_PENALTY
-        candidate = (score, name)
-        if best is None or candidate[0] > best[0] or (candidate[0] == best[0] and name < best[1]):
-            best = candidate
-    return best[1] if best else None
+    return closest_release(wanted, (name for name in available if normalize_title(name) == title))

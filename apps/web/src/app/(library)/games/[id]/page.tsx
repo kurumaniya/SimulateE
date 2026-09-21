@@ -7,6 +7,7 @@ import {
   useDeleteSave,
   useFetchCover,
   useGame,
+  useIdentifyGame,
   useIsAdmin,
   useSaves,
   useSystemBios,
@@ -14,13 +15,15 @@ import {
   useUploadCover,
 } from "@/lib/api/hooks";
 import { savesApi } from "@/lib/api/games";
-import { formatBytes, formatDate, formatPlayTime, formatRelative } from "@/lib/format";
+import { formatBytes, formatPlayTime, formatRelative, formatReleaseDate } from "@/lib/format";
 import { getEmulatorRegistry } from "@/lib/emulator/registry";
 import { CoverImage } from "@/components/games/CoverImage";
 import { PlatformBadge } from "@/components/games/PlatformBadge";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Skeleton } from "@/components/ui/Skeleton";
+
+const IDENTIFIED_BY = { hash: "digest", serial: "serial", name: "name" } as const;
 
 export default function GamePage(props: PageProps<"/games/[id]">) {
   const { id } = use(props.params);
@@ -30,6 +33,7 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
   const favorite = useToggleFavorite();
   const uploadCover = useUploadCover();
   const fetchCover = useFetchCover();
+  const identify = useIdentifyGame();
   const deleteSave = useDeleteSave();
   const isAdmin = useIsAdmin();
   const coverInput = useRef<HTMLInputElement>(null);
@@ -96,6 +100,18 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
               >
                 {fetchCover.isPending ? "Searching…" : "Fetch cover online"}
               </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                disabled={identify.isPending}
+                title="Match the file against the No-Intro / Redump lists by digest, serial, then name"
+                onClick={() => {
+                  setCoverError(null);
+                  identify.mutate({ id: game.id }, { onError: setCoverError });
+                }}
+              >
+                {identify.isPending ? "Identifying…" : game.canonical_name ? "Identify again" : "Identify game"}
+              </Button>
             </>
           )}
           {coverError ? <ErrorBanner error={coverError} /> : null}
@@ -108,16 +124,25 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
               {game.region && <span className="text-xs text-muted">{game.region}</span>}
             </div>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">{game.title}</h1>
+            {game.title_en && game.title_en !== game.title && (
+              <p className="text-base text-fg/80">{game.title_en}</p>
+            )}
             <p className="text-sm text-muted">{systemName(game.system)}</p>
           </div>
 
           <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
-            <Meta label="Released" value={formatDate(game.release_date)} />
+            <Meta label="Released" value={formatReleaseDate(game.release_date)} />
             <Meta label="Developer" value={game.developer ?? "Unknown"} />
             <Meta label="Publisher" value={game.publisher ?? "Unknown"} />
             <Meta label="Play time" value={formatPlayTime(game.play_time_seconds)} />
             <Meta label="Last played" value={formatRelative(game.last_played_at)} />
             <Meta label="File" value={game.rom_filename ?? "—"} mono />
+            {game.canonical_name && (
+              <Meta
+                label={`Identified by ${IDENTIFIED_BY[game.identified_by ?? "name"]}`}
+                value={game.canonical_name}
+              />
+            )}
           </dl>
 
           <div className="flex flex-wrap gap-3">

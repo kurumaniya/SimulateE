@@ -15,6 +15,7 @@ from retroweb.library.scanner import GameScanner
 from retroweb.models import User
 from retroweb.services.artwork import ArtworkFetcher
 from retroweb.services.auth import SESSION_COOKIE
+from retroweb.services.identify import GameIdentifier
 from retroweb.services.jobs import JobRunner
 from retroweb.services.users import current_user
 from retroweb.storage import StorageProvider
@@ -41,6 +42,11 @@ def scanner_dep(request: Request) -> GameScanner:
 def artwork_dep(request: Request) -> ArtworkFetcher:
     fetcher: ArtworkFetcher = request.app.state.artwork
     return fetcher
+
+
+def identifier_dep(request: Request) -> GameIdentifier:
+    identifier: GameIdentifier = request.app.state.identifier
+    return identifier
 
 
 def jobs_dep(request: Request) -> JobRunner:
@@ -71,6 +77,7 @@ DbDep = Annotated[Session, Depends(db_dep)]
 StorageDep = Annotated[StorageProvider, Depends(storage_dep)]
 ScannerDep = Annotated[GameScanner, Depends(scanner_dep)]
 ArtworkDep = Annotated[ArtworkFetcher, Depends(artwork_dep)]
+IdentifierDep = Annotated[GameIdentifier, Depends(identifier_dep)]
 JobsDep = Annotated[JobRunner, Depends(jobs_dep)]
 UserDep = Annotated[User, Depends(user_dep)]
 AdminDep = Annotated[User, Depends(admin_dep)]

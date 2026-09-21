@@ -30,6 +30,7 @@ from retroweb.library.artwork import (
 from retroweb.library.systems import GameSystem
 from retroweb.models import Game
 from retroweb.services import games as game_service
+from retroweb.services.identify import GameDatabaseUnavailableError, GameIdentifier, identify_game
 from retroweb.services.jobs import Job
 from retroweb.storage import StorageProvider
 
@@ -119,13 +120,27 @@ def fetch_cover(
     game_id: str,
     *,
     force: bool,
+    identifier: GameIdentifier | None = None,
 ) -> FetchOutcome:
-    """Look the game's cover up online and store it; ``force`` replaces an existing one."""
+    """Look the game's cover up online and store it; ``force`` replaces an existing one.
+
+    Box art is filed under the release's database name, so a game that has not
+    been identified yet is identified first (when an ``identifier`` is given):
+    that is what finds the cover of a file with a translated or home-made name.
+    """
     game = game_service.get_game(db, game_id)
     if game.cover_key and not force:
         return "skipped"
+    if identifier is not None and identifier.enabled and not game.canonical_name:
+        try:
+            identify_game(db, storage, identifier, game)
+        except GameDatabaseUnavailableError as exc:
+            # The file name may still be a release name: carry on without the database.
+            log.warning("cover.identify_unavailable", game_id=game.id, error=str(exc))
     primary = game.primary_file
     source_name = primary.filename if primary else f"{game.title}.rom"
+    if game.canonical_name:
+        source_name = f"{game.canonical_name}{primary.extension if primary else '.rom'}"
     found = fetcher.find_cover(GameSystem(game.system), source_name)
     if found is None:
         log.info("cover.not_found", game_id=game.id, system=game.system, name=source_name)
@@ -140,7 +155,12 @@ def fetch_cover(
     return "fetched"
 
 
-def fetch_missing_covers(job: Job, storage: StorageProvider, fetcher: ArtworkFetcher) -> None:
+def fetch_missing_covers(
+    job: Job,
+    storage: StorageProvider,
+    fetcher: ArtworkFetcher,
+    identifier: GameIdentifier | None = None,
+) -> None:
     """Job body: fetch a cover for every game that has none."""
     for db in get_session():
         game_ids = list(
@@ -149,7 +169,9 @@ def fetch_missing_covers(job: Job, storage: StorageProvider, fetcher: ArtworkFet
         job.total = len(game_ids)
         for game_id in game_ids:
             try:
-                outcome = fetch_cover(db, storage, fetcher, game_id, force=False)
+                outcome = fetch_cover(
+                    db, storage, fetcher, game_id, force=False, identifier=identifier
+                )
             except MetadataUnavailableError as exc:
                 # The source is down: stop instead of failing every remaining game.
                 job.error(str(exc))

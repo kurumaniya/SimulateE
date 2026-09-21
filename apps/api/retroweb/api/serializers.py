@@ -43,6 +43,8 @@ def game_detail(item: GameListItem) -> GameDetail:
         publisher=game.publisher,
         release_date=game.release_date,
         description=game.description,
+        canonical_name=game.canonical_name,
+        identified_by=game.identified_by,
         rom_filename=primary.filename if primary else None,
         rom_hash=primary.sha256 if primary else None,
         rom_size=primary.size_bytes if primary else None,

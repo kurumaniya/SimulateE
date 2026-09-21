@@ -13,6 +13,7 @@ from retroweb.api.deps import (
     AdminDep,
     ArtworkDep,
     DbDep,
+    IdentifierDep,
     ScannerDep,
     SettingsDep,
     StorageDep,
@@ -25,6 +26,7 @@ from retroweb.core.errors import (
     CoverNotFoundError,
     DuplicateRomError,
     FeatureDisabledError,
+    GameNotIdentifiedError,
     InvalidFilenameError,
     NotFoundError,
     RomMissingError,
@@ -44,6 +46,7 @@ from retroweb.schemas.games import (
 )
 from retroweb.services import artwork as artwork_service
 from retroweb.services import games as game_service
+from retroweb.services import identify as identify_service
 from retroweb.services.games import SortKey
 
 log = get_logger(__name__)
@@ -267,14 +270,35 @@ def get_cover(game_id: str, db: DbDep, storage: StorageDep) -> Response:
 
 @router.post("/{game_id}/cover/fetch", response_model=GameDetail)
 def fetch_cover_online(
-    game_id: str, db: DbDep, user: AdminDep, storage: StorageDep, artwork: ArtworkDep
+    game_id: str,
+    db: DbDep,
+    user: AdminDep,
+    storage: StorageDep,
+    artwork: ArtworkDep,
+    identifier: IdentifierDep,
 ) -> GameDetail:
     """Look the cover up in the libretro-thumbnails collection, replacing any existing one."""
     if not artwork.enabled:
         raise FeatureDisabledError("Online cover art is disabled (ONLINE_METADATA=false)")
-    outcome = artwork_service.fetch_cover(db, storage, artwork, game_id, force=True)
+    outcome = artwork_service.fetch_cover(
+        db, storage, artwork, game_id, force=True, identifier=identifier
+    )
     if outcome == "not_found":
         raise CoverNotFoundError()
+    return game_detail(game_service.get_game_item(db, user, game_id))
+
+
+@router.post("/{game_id}/identify", response_model=GameDetail)
+def identify_game(
+    game_id: str, db: DbDep, user: AdminDep, storage: StorageDep, identifier: IdentifierDep
+) -> GameDetail:
+    """Look the game up again in the No-Intro / Redump lists (by digest, serial, then name)."""
+    if not identifier.enabled:
+        raise FeatureDisabledError("Game identification is disabled (ONLINE_METADATA=false)")
+    game = game_service.get_game(db, game_id)
+    outcome = identify_service.identify_game(db, storage, identifier, game, force=True)
+    if outcome == "not_found":
+        raise GameNotIdentifiedError()
     return game_detail(game_service.get_game_item(db, user, game_id))
 
 

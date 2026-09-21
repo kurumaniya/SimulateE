@@ -95,6 +95,13 @@ class CoverNotFoundError(AppError):
     code = "cover_not_found"
 
 
+class GameNotIdentifiedError(AppError):
+    """Neither the digest, the serial nor the name of this game is in the database."""
+
+    status_code = 404
+    code = "game_not_identified"
+
+
 class FeatureDisabledError(AppError):
     """This feature is switched off in the server configuration."""
 

@@ -34,6 +34,18 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
+/**
+ * Release dates from the game database are often only a year or a month; those
+ * are stored as the 1st, so the 1st is shown with the precision it really has.
+ */
+export function formatReleaseDate(iso: string | null): string {
+  if (!iso) return "Unknown";
+  const [year, month, day] = iso.slice(0, 10).split("-");
+  if (day !== "01") return formatDate(iso);
+  if (month === "01") return year;
+  return new Date(`${year}-${month}-01T00:00:00`).toLocaleDateString(undefined, { year: "numeric", month: "short" });
+}
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "Unknown";
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });

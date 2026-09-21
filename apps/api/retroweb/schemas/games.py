@@ -14,6 +14,9 @@ class GameFileOut(ApiModel):
     extension: str
     size_bytes: int
     sha256: str
+    crc32: str | None = None
+    sha1: str | None = None
+    serial: str | None = None
     region: str | None
     label: str | None
     is_primary: bool
@@ -43,6 +46,10 @@ class GameDetail(GameSummary):
     publisher: str | None
     release_date: date | None
     description: str | None
+    # Release name in the No-Intro / Redump database and how it was matched
+    # ("hash" | "serial" | "name"); null while the game is unidentified.
+    canonical_name: str | None
+    identified_by: str | None
     rom_filename: str | None
     rom_hash: str | None
     rom_size: int | None

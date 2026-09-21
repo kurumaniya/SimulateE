@@ -28,6 +28,10 @@ class Game(IdMixin, TimestampMixin, Base):
     release_date: Mapped[date | None] = mapped_column(Date)
     region: Mapped[str | None] = mapped_column(String(64))
     description: Mapped[str | None] = mapped_column(Text)
+    # Release name in the No-Intro / Redump / FBNeo database (see services.identify)
+    # and how it was found: "hash" | "serial" | "name".
+    canonical_name: Mapped[str | None] = mapped_column(String(255))
+    identified_by: Mapped[str | None] = mapped_column(String(16))
     # Favorites are per user: see models.user.UserFavorite.
 
     files: Mapped[list[GameFile]] = relationship(
@@ -70,6 +74,11 @@ class GameFile(IdMixin, Base):
     extension: Mapped[str] = mapped_column(String(16), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Database-style digests (headers removed, N64 byte order normalised) and the
+    # product code read from the image; filled by services.identify.
+    crc32: Mapped[str | None] = mapped_column(String(8))
+    sha1: Mapped[str | None] = mapped_column(String(40))
+    serial: Mapped[str | None] = mapped_column(String(32))
     region: Mapped[str | None] = mapped_column(String(64))
     label: Mapped[str | None] = mapped_column(String(255))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

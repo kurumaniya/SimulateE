@@ -18,6 +18,7 @@ export type ApiErrorCode =
   | "invalid_storage_key"
   | "bios_missing"
   | "cover_not_found"
+  | "game_not_identified"
   | "feature_disabled"
   | "metadata_unavailable"
   | "job_running"
@@ -130,10 +131,12 @@ export function describeError(error: unknown): { title: string; detail: string; 
         return { title: "BIOS required", detail: "Upload the BIOS file for this system in Settings.", code: error.code };
       case "cover_not_found":
         return { title: "No cover found", detail: "The libretro-thumbnails collection has no box art matching this file name. Rename the file in No-Intro style or upload a cover.", code: error.code };
+      case "game_not_identified":
+        return { title: "Game not recognised", detail: "Neither the file's digest, its serial nor its name is in the No-Intro / Redump lists. Homebrew and heavily modified files are expected to end up here.", code: error.code };
       case "feature_disabled":
         return { title: "Feature disabled", detail: error.message, code: error.code };
       case "metadata_unavailable":
-        return { title: "Cover source unreachable", detail: "The thumbnail server could not be reached. Try again later.", code: error.code };
+        return { title: "Online source unreachable", detail: "The cover or game database server could not be reached. Try again later.", code: error.code };
       case "job_running":
         return { title: "Already running", detail: error.message, code: error.code };
       case "unauthorized":

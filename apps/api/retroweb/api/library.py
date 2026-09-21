@@ -8,6 +8,7 @@ from retroweb.api.deps import (
     AdminDep,
     ArtworkDep,
     DbDep,
+    IdentifierDep,
     JobsDep,
     ScannerDep,
     StorageDep,
@@ -20,6 +21,7 @@ from retroweb.schemas.games import HomeResponse, PlatformSummary, SystemOut
 from retroweb.schemas.jobs import JobOut
 from retroweb.services import artwork as artwork_service
 from retroweb.services import games as game_service
+from retroweb.services import identify as identify_service
 from retroweb.services import scan as scan_service
 
 router = APIRouter(tags=["library"])
@@ -38,14 +40,39 @@ def scan_library_async(scanner: ScannerDep, jobs: JobsDep, _admin: AdminDep) -> 
 
 @router.post("/library/covers/fetch", response_model=JobOut, status_code=202)
 def fetch_missing_covers(
-    storage: StorageDep, artwork: ArtworkDep, jobs: JobsDep, _admin: AdminDep
+    storage: StorageDep,
+    artwork: ArtworkDep,
+    identifier: IdentifierDep,
+    jobs: JobsDep,
+    _admin: AdminDep,
 ) -> JobOut:
     """Start a background job that fetches a cover for every game without one."""
     if not artwork.enabled:
         raise FeatureDisabledError("Online cover art is disabled (ONLINE_METADATA=false)")
     job = jobs.start(
         artwork_service.COVER_FETCH_JOB,
-        lambda job: artwork_service.fetch_missing_covers(job, storage, artwork),
+        lambda job: artwork_service.fetch_missing_covers(job, storage, artwork, identifier),
+    )
+    return job_out(job)
+
+
+@router.post("/library/identify", response_model=JobOut, status_code=202)
+def identify_library(
+    storage: StorageDep,
+    identifier: IdentifierDep,
+    jobs: JobsDep,
+    _admin: AdminDep,
+    force: bool = False,
+) -> JobOut:
+    """Match every unidentified game against the No-Intro / Redump lists in the background.
+
+    ``force`` looks every game up again, including the ones already identified.
+    """
+    if not identifier.enabled:
+        raise FeatureDisabledError("Game identification is disabled (ONLINE_METADATA=false)")
+    job = jobs.start(
+        identify_service.IDENTIFY_JOB,
+        lambda job: identify_service.identify_library(job, storage, identifier, force=force),
     )
     return job_out(job)
 

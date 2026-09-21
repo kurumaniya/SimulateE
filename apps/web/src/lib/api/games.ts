@@ -47,6 +47,9 @@ export const gamesApi = {
   /** Look the cover up in the libretro-thumbnails collection (replaces any existing one). */
   fetchCover: (id: string) =>
     request<GameDetail>(`/games/${encodeURIComponent(id)}/cover/fetch`, { method: "POST" }),
+  /** Look the game up again in the No-Intro / Redump lists (digest, serial, then name). */
+  identify: (id: string) =>
+    request<GameDetail>(`/games/${encodeURIComponent(id)}/identify`, { method: "POST" }),
   coverUrl: (game: { id: string; has_cover: boolean; updated_at?: string }) =>
     game.has_cover
       ? buildUrl(`/games/${encodeURIComponent(game.id)}/cover`, { v: game.updated_at })
@@ -69,6 +72,8 @@ export const libraryApi = {
   scan: () => request<JobOut>("/library/scan", { method: "POST" }),
   /** Start a background job fetching a cover for every game without one. */
   fetchCovers: () => request<JobOut>("/library/covers/fetch", { method: "POST" }),
+  /** Start a background job that identifies every game without a database name. */
+  identify: () => request<JobOut>("/library/identify", { method: "POST" }),
   job: (id: string) => request<JobOut>(`/library/jobs/${encodeURIComponent(id)}`),
   jobs: () => request<JobOut[]>("/library/jobs"),
 };

@@ -29,6 +29,7 @@ Open it on another device and resume.
 - Automatic "Resume" save state captured on quit
 - Play sessions with server-side play time
 - ROM upload and cover upload from the Settings / game pages
+- Game identification against the No-Intro / Redump lists by digest, serial or name: English title, developer, publisher, release year, and the right box art even for translated ROMs with a home-made file name
 - Cover art fetched on request from the libretro-thumbnails collection, per game or for the whole library (background job with progress)
 - Range-capable ROM streaming (no base64, no whole-file buffering)
 - Storage abstraction (`StorageProvider`) with a local filesystem provider
@@ -146,8 +147,8 @@ flagged as missing. You can also upload a ROM from the Settings page.
 
 Filenames in No-Intro style (`Title (Region).gba`) are parsed for the title and
 region. Cover art can be uploaded on the game page or fetched online (see
-[Cover art](#cover-art)); a placeholder is shown otherwise. Online metadata
-for titles and descriptions is planned (`MetadataProvider` interface).
+[Cover art](#cover-art)); a placeholder is shown otherwise. Files with any other
+name are recognised by their content, see [Game identification](#game-identification).
 
 ## BIOS setup
 
@@ -170,13 +171,38 @@ MD5; an unknown digest is kept but flagged.
 
 RetroWeb never downloads BIOS files.
 
+## Game identification
+
+**Settings → Identify games** (or **Identify game** on a game page) matches each file
+against the No-Intro / Redump release lists published as
+[libretro-database](https://github.com/libretro/libretro-database):
+
+1. by **digest** (SHA-1, then CRC32) of the dump, computed the way those databases do:
+   without the iNES header, without an SNES copier header, Nintendo 64 images in
+   big-endian order;
+2. by the **serial** stored inside the image: the game code in a GBA / GBC / NDS / N64
+   header, `SLUS-01234` from a PlayStation disc's `SYSTEM.CNF`, `ULUS-10041` from a
+   PSP disc. A translated or patched ROM no longer matches by digest but keeps its
+   serial, so `炸弹人锦标赛[汉化].gba` is still recognised as *Bomberman Tournament*;
+3. by **name**, when the file name's title equals a release title.
+
+A match sets the English title, region, developer, publisher and release year (fields
+you edited yourself are kept; your own title stays the display title) and records the
+release name, which is what box art is filed under. Each system's list is downloaded
+once and cached in `data/cache/gamedb` for `GAMEDB_TTL_DAYS` (14) days; an outage falls
+back to the cached copy. Only name lists are downloaded, never games. The lists carry
+no descriptions: those still need a keyed provider (ScreenScraper, IGDB) and are not
+implemented. `ONLINE_METADATA=false` disables identification together with cover art;
+`GAMEDB_BASE_URL` points at a mirror.
+
 ## Cover art
 
 Box art comes from the [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
-collection, looked up by the ROM's file name (No-Intro / Redump style names
-match best; when the exact name is missing, the closest entry with the same
+collection, looked up by the game's release name when it has been identified (fetching
+a cover identifies the game first) and by the ROM's file name otherwise (No-Intro /
+Redump style names match best; when the exact name is missing, the closest entry with the same
 title and region is used). Nothing is fetched automatically: press **Fetch
-cover online** on a game page, or **Settings → Cover art → Fetch missing
+cover online** on a game page, or **Settings → Fetch missing
 covers** to run a background job over the whole library. Only images are
 downloaded. Set `ONLINE_METADATA=false` to disable it, or
 `THUMBNAILS_BASE_URL` to point at a mirror.
@@ -259,6 +285,7 @@ libretro-thumbnails collection, whose contents are maintained by that project.
 7. ~~Phase 7 — Background scan with progress, `.m3u` multi-disc sets, GB/GBC boot ROMs and FDS BIOS wired~~ done
 8. ~~Phase 8 — Touch: on-screen controls verified, toolbar reachable by tap, Controls button for remapping~~ done
 9. ~~Phase 9 — Accounts: sign-in, admin role, per-user saves and favorites~~ done
+10. ~~Phase 10 — Game identification by digest / serial / name (libretro-database): titles, developer, publisher, year, covers for renamed and translated ROMs~~ done
 10. Later — Dreamcast, Saturn, Arcade; S3/WebDAV storage; online titles/descriptions
 
 Not planned: cloud gaming, netplay, achievements, streaming, social features.

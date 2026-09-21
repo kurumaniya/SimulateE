@@ -189,6 +189,18 @@ export function useFetchCovers() {
   return useMutation({ mutationFn: libraryApi.fetchCovers });
 }
 
+export function useIdentifyGame() {
+  const invalidate = useInvalidateLibrary();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => gamesApi.identify(id),
+    onSuccess: (game) => invalidate(game.id),
+  });
+}
+
+export function useIdentifyLibrary() {
+  return useMutation({ mutationFn: libraryApi.identify });
+}
+
 /** Polls a background job every second until it finishes. */
 export function useJob(jobId: string | null) {
   return useQuery({

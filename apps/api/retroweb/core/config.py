@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     online_metadata: bool = True
     thumbnails_base_url: str = "https://thumbnails.libretro.com"
     thumbnails_timeout_seconds: float = 20.0
+    # Game identification: No-Intro / Redump name lists (clrmamepro DATs) from
+    # libretro-database, looked up by the digest or serial of the user's own
+    # file. Downloaded once per system and cached under <DATA_PATH>/cache.
+    gamedb_base_url: str = "https://raw.githubusercontent.com/libretro/libretro-database/master"
+    gamedb_timeout_seconds: float = 60.0
+    gamedb_ttl_days: int = 14
 
     log_format: Literal["console", "json"] = "console"
     log_level: str = "INFO"
