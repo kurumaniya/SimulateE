@@ -3,7 +3,7 @@
 #   bash ~/simulatee/deploy/gateway-setup.sh
 # 1) Cloudflare 建 A 记录（DNS-only，指向当前公网 IP）
 # 2) certbot 用 dns-cloudflare 签证书（续期由现有 crontab 的 renew.sh 自动覆盖）
-# 3) 生成 HTTP Basic 认证文件（仅首次；密码存 ~/.secrets/retro-basic-auth.txt）
+# 3) （已废弃）HTTP Basic 于 2026-09-22 撤掉；旧的 htpasswd 与密码文件保留不用
 # 4) 在 ~/gateway/nginx.conf 末尾插入/替换带标记的 server 块，nginx -t 通过后 reload
 # 不碰 kiora / console 的任何配置；最后跑 mainstage 的 verify.sh 复核。
 set -euo pipefail
@@ -58,18 +58,7 @@ else
   echo "already have $(openssl x509 -in "$HOME/certbot/config/live/$HOST/fullchain.pem" -noout -enddate)"
 fi
 
-# ---------- 3. Basic 认证 ----------
-log "Basic 认证"
-mkdir -p "$HOME/.secrets"; chmod 700 "$HOME/.secrets"
-if [ ! -s "$HTPASSWD" ]; then
-  pw=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)
-  printf '%s:%s\n' "$AUTH_USER" "$(openssl passwd -apr1 "$pw")" > "$HTPASSWD"
-  chmod 600 "$HTPASSWD"
-  printf 'user=%s\npassword=%s\n' "$AUTH_USER" "$pw" > "$PWFILE"; chmod 600 "$PWFILE"
-  echo "new credentials written to $PWFILE"
-else
-  echo "already exists ($HTPASSWD), keeping it; see $PWFILE"
-fi
+# ---------- 3. Basic 认证（已撤掉，跳过） ----------
 
 # ---------- 4. nginx server 块 ----------
 log "nginx server 块"
@@ -78,7 +67,7 @@ $MARK_BEGIN
     # 公网 https://$HOST（路由器 443 -> 本机 8443）。
     # 门禁三层：① mTLS 设备证书（与 kiora / console / fnos 共用同一套设备 CA 与 CRL，吊销一处四处生效；
     #   证书由 kiora 的 device_pair 签发，见 ~/kiora-src/kiora/deploy/mtls-gateway-setup.md §6.2）
-    #   ② HTTP Basic ③ 应用账号（RetroWeb 自己的登录）。无证书 400，有证书没密码 401。
+    #   ② 应用账号（RetroWeb 自己的登录）。HTTP Basic 已于 2026-09-22 撤掉（主人决定只靠应用账号）。无证书 400。
     # 上游是 Next.js standalone(:3000)，/api 由 Next 服务端再转到 uvicorn(:8010)。
     # COOP/COEP 头由上游下发并原样透传（SharedArrayBuffer/PSP 需要）。
     server {
@@ -97,9 +86,6 @@ $MARK_BEGIN
         # mTLS 命门：TLS1.3 会话复用会让非首条连接跳过 CertificateRequest
         ssl_session_tickets off;
         ssl_session_cache   off;
-
-        auth_basic           "RetroWeb";
-        auth_basic_user_file /home/koy/gateway/retro.htpasswd;
 
         client_max_body_size    2g;      # ROM 上传上限，与 API 的 MAX_ROM_UPLOAD_BYTES 一致
         proxy_request_buffering off;     # 上传直通，不先落盘到 tmp/body
@@ -147,11 +133,9 @@ log "验证 $HOST（本机 --resolve）"
 R="--resolve $HOST:8443:127.0.0.1 --no-keepalive"
 if [ -n "${CLIENT_CERT:-}" ]; then R="$R --cert $CLIENT_CERT --key $CLIENT_KEY"; else echo "(未提供 CLIENT_CERT/CLIENT_KEY，跳过有证书的检查)"; fi
 echo "无证书 /            -> $(curl -sk --no-keepalive $R -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 400：mTLS 在 Basic 之前)"
-# shellcheck disable=SC1090
-. "$PWFILE"
-echo "有凭据 /            -> $(curl -sk $R -u "$user:$password" -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 200)"
-echo "有凭据 /api/health  -> $(curl -sk $R -u "$user:$password" -m 8 https://$HOST:8443/api/health)"
-echo "COOP/COEP:"; curl -sk $R -u "$user:$password" -D - -o /dev/null -m 8 https://$HOST:8443/ | grep -i cross-origin
+echo "有证书 /            -> $(curl -sk $R -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 200)"
+echo "有证书 /api/health  -> $(curl -sk $R -m 8 https://$HOST:8443/api/health)"
+echo "COOP/COEP:"; curl -sk $R -D - -o /dev/null -m 8 https://$HOST:8443/ | grep -i cross-origin
 echo "证书:"; echo | openssl s_client -connect 127.0.0.1:8443 -servername "$HOST" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate
 log "mainstage verify.sh（确认 kiora/console 未受影响）"
 bash "$HOME/mainstage/deploy/verify.sh" | tail -6 || true
