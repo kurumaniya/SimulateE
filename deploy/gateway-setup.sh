@@ -75,7 +75,10 @@ fi
 log "nginx server 块"
 block=$(cat <<NGX
 $MARK_BEGIN
-    # 公网 https://$HOST（路由器 443 -> 本机 8443）。门禁 = HTTP Basic（应用本身无登录）。
+    # 公网 https://$HOST（路由器 443 -> 本机 8443）。
+    # 门禁三层：① mTLS 设备证书（与 kiora / console / fnos 共用同一套设备 CA 与 CRL，吊销一处四处生效；
+    #   证书由 kiora 的 device_pair 签发，见 ~/kiora-src/kiora/deploy/mtls-gateway-setup.md §6.2）
+    #   ② HTTP Basic ③ 应用账号（RetroWeb 自己的登录）。无证书 400，有证书没密码 401。
     # 上游是 Next.js standalone(:3000)，/api 由 Next 服务端再转到 uvicorn(:8010)。
     # COOP/COEP 头由上游下发并原样透传（SharedArrayBuffer/PSP 需要）。
     server {
@@ -85,6 +88,15 @@ $MARK_BEGIN
         ssl_certificate     /home/koy/certbot/config/live/$HOST/fullchain.pem;
         ssl_certificate_key /home/koy/certbot/config/live/$HOST/privkey.pem;
         ssl_protocols TLSv1.2 TLSv1.3;
+
+        # mTLS（2026-09-21 起，与 kiora / console / fnos 同一套设备 CA）
+        ssl_client_certificate  /home/koy/kiora-src/kiora/data/tls/device-ca.pem;
+        ssl_verify_client       on;
+        ssl_crl                 /home/koy/kiora-src/kiora/data/tls/device-crl.pem;
+        ssl_verify_depth        1;
+        # mTLS 命门：TLS1.3 会话复用会让非首条连接跳过 CertificateRequest
+        ssl_session_tickets off;
+        ssl_session_cache   off;
 
         auth_basic           "RetroWeb";
         auth_basic_user_file /home/koy/gateway/retro.htpasswd;
@@ -96,6 +108,7 @@ $MARK_BEGIN
         proxy_send_timeout      600s;
 
         location / {
+            if (\$ssl_client_verify != SUCCESS) { return 403; }
             proxy_pass $UPSTREAM;
             proxy_http_version 1.1;
             proxy_set_header Host \$host;
@@ -129,9 +142,11 @@ PY
 bash "$HOME/reload_gateway.sh"
 
 # ---------- 5. 验证 ----------
+# 有证书的检查需要一张设备证书：CLIENT_CERT=leaf.pem CLIENT_KEY=leaf.key bash gateway-setup.sh
 log "验证 $HOST（本机 --resolve）"
-R="--resolve $HOST:8443:127.0.0.1"
-echo "无凭据 /            -> $(curl -sk $R -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 401)"
+R="--resolve $HOST:8443:127.0.0.1 --no-keepalive"
+if [ -n "${CLIENT_CERT:-}" ]; then R="$R --cert $CLIENT_CERT --key $CLIENT_KEY"; else echo "(未提供 CLIENT_CERT/CLIENT_KEY，跳过有证书的检查)"; fi
+echo "无证书 /            -> $(curl -sk --no-keepalive $R -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 400：mTLS 在 Basic 之前)"
 # shellcheck disable=SC1090
 . "$PWFILE"
 echo "有凭据 /            -> $(curl -sk $R -u "$user:$password" -o /dev/null -w '%{http_code}' -m 8 https://$HOST:8443/)   (期望 200)"
