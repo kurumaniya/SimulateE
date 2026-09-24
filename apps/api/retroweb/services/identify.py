@@ -332,8 +332,19 @@ def identify_game(
     print_: Fingerprint | None = None
     target = _fingerprint_target(game)
     if system not in SET_NAME_SYSTEMS and target is not None and not target.missing:
-        if target.crc32 and target.sha1 and not force:
+        if target.crc32 and target.sha1 and target.serial and not force:
             print_ = Fingerprint(target.crc32, target.sha1, target.size_bytes, target.serial)
+        elif target.crc32 and target.sha1 and not force and storage.exists(target.storage_key):
+            # Digests are known but no serial was read back then (an older probe):
+            # re-read the head only, it is cheap and the serial may match now.
+            head = fingerprint(
+                system,
+                storage.stream(target.storage_key, 0, DISC_PROBE_BYTES - 1),
+                target.size_bytes,
+                probe_only=True,
+            )
+            target.serial = head.serial
+            print_ = Fingerprint(target.crc32, target.sha1, target.size_bytes, head.serial)
         elif storage.exists(target.storage_key):
             probe_only = system in DISC_SYSTEMS and target.size_bytes > FULL_HASH_LIMIT
             # A bounded range, not an abandoned full stream: leaving a FUSE file half

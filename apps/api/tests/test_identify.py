@@ -12,6 +12,7 @@ from retroweb.core.config import Settings
 from retroweb.library.datfile import parse_dat
 from retroweb.library.romid import fingerprint
 from retroweb.library.systems import GameSystem
+from retroweb.models import Game
 from retroweb.services.identify import GameIdentifier
 from tests.conftest import make_gba_rom, wait_for_job
 from tests.test_artwork import PNG, install_fetcher, thumbnail_server
@@ -490,3 +491,39 @@ def test_attribute_lists_supply_names_for_releases_missing_from_the_main_lists(
     assert game["canonical_name"] == "One Two Boat Racing (USA)"
     assert game["title"] == "One Two Boat Racing"  # a bare code title is replaced
     assert game["developer"] == "Zallag"
+
+
+def test_known_digests_without_a_serial_get_the_head_probed_again(
+    client: TestClient, settings: Settings, data_dir: Path
+) -> None:
+    image = b"\0" * 4000 + b"NPUX-80431|0123456789ABCDEF|0001|G" + b"\0" * 3000
+    (data_dir / "roms" / "psp").mkdir()
+    (data_dir / "roms" / "psp" / "boat.iso").write_bytes(image)
+    assert client.post("/api/games/scan").status_code == 200
+    game_id = client.get("/api/games?system=psp").json()["items"][0]["id"]
+    # First pass with an empty database: digests are stored, nothing matches.
+    install_identifier(client, settings, game_database({}))
+    assert client.post(f"/api/games/{game_id}/identify").status_code == 404
+    # Simulate an older probe that stored digests but no serial.
+    from sqlalchemy import update
+
+    from retroweb.core.database import get_session
+    from retroweb.models import GameFile
+
+    for db in get_session():
+        db.execute(update(GameFile).where(GameFile.game_id == game_id).values(serial=None))
+        db.commit()
+    assert client.get(f"/api/games/{game_id}").json()["files"][0]["sha1"] is not None
+    # A list appears later: a plain (non-force) pass must still find the serial.
+    dat = 'game (\n\tname "Boat (USA)"\n\tserial "NPUX-80431"\n\trom ( serial "NPUX-80431" )\n)\n'
+    install_identifier(
+        client, settings, game_database({"/metadat/developer/Sony - PlayStation Portable.dat": dat})
+    )
+    from retroweb.services.identify import identify_game as _identify
+
+    for db in get_session():
+        game = db.get(Game, game_id)
+        assert (
+            _identify(db, client.app.state.storage, client.app.state.identifier, game) == "serial"
+        )  # type: ignore[attr-defined]
+        assert game.canonical_name == "Boat (USA)"
