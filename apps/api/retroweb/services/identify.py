@@ -119,6 +119,9 @@ class SystemIndex:
         # Every attribute any source states for a release name (the developer,
         # publisher and release-date lists repeat the name with one field each).
         self.attributes_by_name: dict[str, dict[str, str]] = {}
+        # The same, keyed by serial: the release-date and publisher lists often
+        # spell a name differently from the main list but carry the serial.
+        self.attributes_by_serial: dict[str, dict[str, str]] = {}
         self.by_rom_name: dict[str, int] = {}
         for game in games:
             if not game.name:
@@ -137,6 +140,10 @@ class SystemIndex:
             for serial in serials:
                 if serial:
                     self.by_serial.setdefault(_serial_key(serial), []).append(position)
+                    if game.attributes:
+                        merged = self.attributes_by_serial.setdefault(_serial_key(serial), {})
+                        for key, value in game.attributes.items():
+                            merged.setdefault(key, value)
             for rom in game.roms:
                 if rom.sha1:
                     self.by_sha1.setdefault(rom.sha1, position)
@@ -399,6 +406,10 @@ def identify_game(
     # disc image that was only probed) still finds them by its exact name.
     for key, value in index.attributes_by_name.get(release.name, {}).items():
         attributes.setdefault(key, value)
+    serial = print_.serial if print_ is not None else None
+    if serial:
+        for key, value in index.attributes_by_serial.get(_serial_key(serial), {}).items():
+            attributes.setdefault(key, value)
     lookup = release.crc
     for folder in ATTRIBUTE_FOLDERS:
         if folder not in attributes and lookup:

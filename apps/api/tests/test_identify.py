@@ -543,12 +543,13 @@ def test_attributes_are_found_by_release_name_for_serial_matches(
     assert client.post("/api/games/scan").status_code == 200
     game_id = client.get("/api/games?system=psp").json()["items"][0]["id"]
 
-    def entry(extra: str, rom: str) -> str:
-        head = 'game (\n\tname "Big Game (Japan)"\n\tserial "ULJS-00480"\n'
+    def entry(extra: str, rom: str, name: str = "Big Game (Japan)") -> str:
+        head = 'game (\n\tname "' + name + '"\n\tserial "ULJS-00480"\n'
         return head + extra + "\trom ( " + rom + " )\n)\n"
 
     main = entry("", 'name "Big Game (Japan).iso" size 1 crc 0000AAAA serial "ULJS-00480"')
-    year = entry('\treleaseyear "2011"\n', 'serial "ULJS-00480"')
+    # The year list spells the name differently: it is matched by serial.
+    year = entry('\treleaseyear "2011"\n', 'serial "ULJS-00480"', "Big Game (Japan) (v1.01)")
     dev = entry('\tdeveloper "Bandai"\n', 'serial "ULJS-00480"')
     install_identifier(
         client,
