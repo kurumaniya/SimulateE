@@ -531,3 +531,38 @@ def test_known_digests_without_a_serial_get_the_head_probed_again(
             _identify(db, client.app.state.storage, client.app.state.identifier, game) == "serial"
         )  # type: ignore[attr-defined]
         assert game.canonical_name == "Boat (USA)"
+
+
+def test_attributes_are_found_by_release_name_for_serial_matches(
+    client: TestClient, settings: Settings, data_dir: Path
+) -> None:
+    image = b"\0" * (300 * 1024 * 1024)  # above FULL_HASH_LIMIT: only the head is probed
+    image = image[:4000] + b"ULJS-00480|0123456789ABCDEF|0001|G" + image[4000 + 34 :]
+    (data_dir / "roms" / "psp").mkdir()
+    (data_dir / "roms" / "psp" / "big.iso").write_bytes(image)
+    assert client.post("/api/games/scan").status_code == 200
+    game_id = client.get("/api/games?system=psp").json()["items"][0]["id"]
+
+    def entry(extra: str, rom: str) -> str:
+        head = 'game (\n\tname "Big Game (Japan)"\n\tserial "ULJS-00480"\n'
+        return head + extra + "\trom ( " + rom + " )\n)\n"
+
+    main = entry("", 'name "Big Game (Japan).iso" size 1 crc 0000AAAA serial "ULJS-00480"')
+    year = entry('\treleaseyear "2011"\n', 'serial "ULJS-00480"')
+    dev = entry('\tdeveloper "Bandai"\n', 'serial "ULJS-00480"')
+    install_identifier(
+        client,
+        settings,
+        game_database(
+            {
+                "/metadat/redump/Sony - PlayStation Portable.dat": main,
+                "/metadat/releaseyear/Sony - PlayStation Portable.dat": year,
+                "/metadat/developer/Sony - PlayStation Portable.dat": dev,
+            }
+        ),
+    )
+    game = client.post(f"/api/games/{game_id}/identify").json()
+    assert game["identified_by"] == "serial"
+    assert game["files"][0]["sha1"] is None  # not hashed in full
+    assert game["release_date"] == "2011-01-01"
+    assert game["developer"] == "Bandai"

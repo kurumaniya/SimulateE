@@ -116,6 +116,9 @@ class SystemIndex:
         self.by_crc: dict[str, int] = {}
         self.by_serial: dict[str, list[int]] = {}
         self.by_title: dict[str, list[int]] = {}
+        # Every attribute any source states for a release name (the developer,
+        # publisher and release-date lists repeat the name with one field each).
+        self.attributes_by_name: dict[str, dict[str, str]] = {}
         self.by_rom_name: dict[str, int] = {}
         for game in games:
             if not game.name:
@@ -126,6 +129,10 @@ class SystemIndex:
                 Release(game.name, game.region, first_crc, tuple(sorted(game.attributes.items())))
             )
             self.by_title.setdefault(normalize_title(game.name), []).append(position)
+            if game.attributes:
+                merged = self.attributes_by_name.setdefault(game.name, {})
+                for key, value in game.attributes.items():
+                    merged.setdefault(key, value)
             serials = {game.serial} | {rom.serial for rom in game.roms}
             for serial in serials:
                 if serial:
@@ -388,12 +395,16 @@ def identify_game(
             game.title_zh = game.title
 
     attributes = dict(release.attributes)
+    # The attribute lists are keyed by CRC; a release matched by serial (or a
+    # disc image that was only probed) still finds them by its exact name.
+    for key, value in index.attributes_by_name.get(release.name, {}).items():
+        attributes.setdefault(key, value)
     lookup = release.crc
     for folder in ATTRIBUTE_FOLDERS:
         if folder not in attributes and lookup:
-            value = identifier.attribute(system, folder, lookup)
-            if value:
-                attributes[folder] = value
+            found_value = identifier.attribute(system, folder, lookup)
+            if found_value:
+                attributes[folder] = found_value
     if not game.developer and attributes.get("developer"):
         game.developer = attributes["developer"]
     if not game.publisher and attributes.get("publisher"):
