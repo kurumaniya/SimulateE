@@ -38,6 +38,16 @@ _KNOWN_REGIONS = {
 }
 
 
+# Collections number their files: "2851 - 12点的钟声与灰姑娘 [简].iso". The number is
+# a catalogue index, not part of the title. Only a 4+ digit index followed by a
+# CJK title is stripped: No-Intro names like "007 - NightFire" keep their number.
+_CATALOGUE_NUMBER = re.compile(r"^\d{4,6}\s*-\s*(?=.*[぀-ヿ㐀-鿿가-힯])")
+
+
+def _strip_catalogue_number(title: str) -> str:
+    return _CATALOGUE_NUMBER.sub("", title, count=1).strip(" -_")
+
+
 class FilenameMetadataProvider(MetadataProvider):
     id = "filename"
 
@@ -48,6 +58,7 @@ class FilenameMetadataProvider(MetadataProvider):
         tags = _PAREN.findall(stem) + _BRACKET.findall(stem)
         title = _BRACKET.sub("", _PAREN.sub("", stem)).strip(" -_")
         title = re.sub(r"\s+", " ", title).replace("_", " ").strip()
+        title = _strip_catalogue_number(title)
         if not title:
             title = stem.strip()
 
