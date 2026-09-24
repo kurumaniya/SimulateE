@@ -28,7 +28,8 @@ trap cleanup EXIT
 if ! mountpoint -q "$RW"; then
   RCLONE_SMB_PASS="$(printf '%s' "$rw_pass" | rclone obscure -)" \
     rclone mount ":smb,host=$NAS_HOST,user=$rw_user:$NAS_SHARE" "$RW" \
-      --vfs-cache-mode writes --daemon --log-level NOTICE
+      --vfs-cache-mode off --daemon --log-level NOTICE
+  # 直接流式写入：不经本地缓存（.53 只有几十 GB 空闲，缓存模式会把系统盘写满）。unrar 顺序写，够用。
   for _ in $(seq 1 20); do sleep 1; mountpoint -q "$RW" && break; done
   mountpoint "$RW"
 fi
@@ -40,12 +41,16 @@ total=${#archives[@]}
 echo "[$(date +%F' '%T)] $total 个压缩包"
 for a in "${archives[@]}"; do
   rel="${a#"$SRC"/}"; dir="$RW/psp/$(dirname "$rel")"; mkdir -p "$dir"
-  # 已解过：同目录里已有非压缩包文件且名字前缀相同（PSPCH001.7z -> PSPCH001*.iso 之类）——
-  # 更稳的判定是 unrar l 列出的文件名都已存在
-  listed=$(unrar lb -p"$rar_pass" "$a" 2>/dev/null || true)
+  # 已解过的判定：压缩包里每个文件都已存在于目标目录且**大小一致**（中断留下的半截文件会被重解）。
+  listed=$(unrar lt -p"$rar_pass" "$a" 2>/dev/null | awk -F': *' '/^ *Name:/{n=$2} /^ *Size:/{print $2 "	" n}' || true)
   if [ -z "$listed" ]; then echo "[skip] 列不出内容（口令错？）: $rel"; failed=$((failed+1)); continue; fi
   all_present=1
-  while IFS= read -r inner; do [ -e "$dir/$inner" ] || { all_present=0; break; }; done <<< "$listed"
+  while IFS=$'	' read -r want inner; do
+    [ -n "$inner" ] || continue
+    if [ -d "$dir/$inner" ]; then continue; fi
+    have=$(stat -c %s "$dir/$inner" 2>/dev/null || echo -1)
+    [ "$have" = "$want" ] || { all_present=0; break; }
+  done <<< "$listed"
   if [ "$all_present" = 1 ]; then skipped=$((skipped+1)); continue; fi
   echo "[$(date +%T)] 解压 $rel -> $(dirname "$rel")/"
   if unrar x -o+ -y -idq -p"$rar_pass" "$a" "$dir/"; then
