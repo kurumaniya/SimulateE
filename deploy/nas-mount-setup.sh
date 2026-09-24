@@ -58,7 +58,7 @@ echo "顶层目录: $(ls "$MOUNT" | tr '\n' ' ')"
 if [ -d "$MOUNT/psp" ]; then
   echo "psp 文件数: $(find "$MOUNT/psp" -type f | wc -l)，总大小: $(du -sh "$MOUNT/psp" 2>/dev/null | cut -f1)"
   echo "psp 扩展名分布: $(find "$MOUNT/psp" -type f | sed -n 's/.*\.\([A-Za-z0-9]*\)$/\1/p' | tr 'A-Z' 'a-z' | sort | uniq -c | sort -rn | head -5 | tr '\n' ' ')"
-  first=$(find "$MOUNT/psp" -type f | head -1)
+  first=$(find "$MOUNT/psp" -type f 2>/dev/null | head -1 || true)
   if [ -n "$first" ]; then
     echo "读取测试（前 64 MB）: $(dd if="$first" bs=1M count=64 2>&1 >/dev/null | tail -1)"
   fi
