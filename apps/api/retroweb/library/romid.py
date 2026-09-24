@@ -43,6 +43,11 @@ _PSP_DISC_ID = re.compile(rb"([A-Z]{4})-(\d{5})\|")
 # then the product number and version: "T-8106G   V1.000".
 _SATURN_ID = re.compile(rb"SEGA SEGASATURN .{16}([A-Z0-9][A-Z0-9 -]{9})V\d", re.DOTALL)
 
+_CSO_HEADER = 24
+_SFO_MAGIC = b"\0PSF"
+# DISC_ID in PARAM.SFO: "UCJS10041" (no dash)
+_DISC_ID = re.compile(rb"^([A-Z]{4})(\d{5})$")
+
 _CARTRIDGE_SERIAL_OFFSETS: dict[GameSystem, int] = {
     GameSystem.GBA: 0xAC,
     GameSystem.NDS: 0x0C,
@@ -97,11 +102,13 @@ def _cso_head(head: bytes) -> bytes:
     """
     if len(head) < 24 or head[:4] != b"CISO":
         return head
-    _magic, header_size, total, block_size, _ver, align = struct.unpack_from("<4sIQIBB", head, 0)
+    _magic, _header_size, total, block_size, _ver, align = struct.unpack_from("<4sIQIBB", head, 0)
     if block_size == 0 or total == 0:
         return head
-    count = min(total // block_size + 1, (len(head) - header_size) // 4)
-    entries = struct.unpack_from(f"<{count}I", head, header_size)
+    # The block index follows the fixed 24-byte header; the header_size field
+    # is informational and many tools leave it at 0.
+    count = min(total // block_size + 1, (len(head) - _CSO_HEADER) // 4)
+    entries = struct.unpack_from(f"<{count}I", head, _CSO_HEADER)
     out = bytearray()
     for index in range(count - 1):
         start = (entries[index] & 0x7FFFFFFF) << align
@@ -121,6 +128,41 @@ def _cso_head(head: bytes) -> bytes:
     return bytes(out)
 
 
+def _sfo_value(sfo: bytes, wanted: bytes) -> bytes | None:
+    """One string entry of a PARAM.SFO blob (``sfo`` starts at its magic)."""
+    try:
+        magic, _version, key_table, data_table, count = struct.unpack_from("<IIIII", sfo, 0)
+        if magic != 0x46535000:
+            return None
+        for i in range(count):
+            key_offset, _fmt, length, _max_len, data_offset = struct.unpack_from(
+                "<HHIII", sfo, 20 + i * 16
+            )
+            key_start = key_table + key_offset
+            key_end = sfo.index(b"\0", key_start)
+            if sfo[key_start:key_end] == wanted:
+                start = data_table + data_offset
+                return sfo[start : start + length].rstrip(b"\0")
+    except (struct.error, ValueError):
+        return None
+    return None
+
+
+def _sfo_disc_id(head: bytes) -> str | None:
+    """DISC_ID from any PARAM.SFO found in the head (PBP packages, discs without UMD_DATA.BIN)."""
+    start = 0
+    while True:
+        at = head.find(_SFO_MAGIC, start)
+        if at < 0:
+            return None
+        value = _sfo_value(head[at : at + 65536], b"DISC_ID")
+        if value:
+            match = _DISC_ID.match(value)
+            if match:
+                return f"{match.group(1).decode()}-{match.group(2).decode()}"
+        start = at + 4
+
+
 def _disc_serial(system: GameSystem, head: bytes) -> str | None:
     if system is GameSystem.PSP:
         head = _cso_head(head)
@@ -133,6 +175,7 @@ def _disc_serial(system: GameSystem, head: bytes) -> str | None:
         match = _PSP_DISC_ID.search(head)
         if match:
             return f"{match.group(1).decode()}-{match.group(2).decode()}"
+        return _sfo_disc_id(head)
     if system is GameSystem.SATURN:
         match = _SATURN_ID.search(head)
         if match:

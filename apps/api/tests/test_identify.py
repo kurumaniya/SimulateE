@@ -427,3 +427,66 @@ def test_extra_name_lists_are_merged_into_the_index(
     assert game["canonical_name"] == "PSN Game (Japan)"
     assert game["identified_by"] == "serial"
     assert "/metadat/redump/Sony - PlayStation Portable.dat" in hits
+
+
+def make_sfo(entries: dict[bytes, bytes]) -> bytes:
+    import struct as _struct
+
+    keys = b"".join(k + b"\0" for k in entries)
+    key_table = 20 + 16 * len(entries)
+    data_table = key_table + len(keys)
+    data_table += (-data_table) % 4
+    index = b""
+    data = b""
+    key_offset = 0
+    for key, value in entries.items():
+        value = value + b"\0"
+        index += _struct.pack("<HHIII", key_offset, 0x0204, len(value), len(value), len(data))
+        key_offset += len(key) + 1
+        data += value
+    header = _struct.pack("<IIIII", 0x46535000, 0x0101, key_table, data_table, len(entries))
+    return header + index + keys.ljust(data_table - key_table, b"\0") + data
+
+
+def test_psp_serial_falls_back_to_param_sfo_disc_id() -> None:
+    sfo = make_sfo({b"CATEGORY": b"UG", b"DISC_ID": b"UCJS10041", b"TITLE": b"Miku"})
+    iso = b"\0" * 3000 + b"PARAM.SFO" + b"\0" * 5000 + sfo + b"\0" * 2000
+    print_ = fingerprint(GameSystem.PSP, [iso], len(iso), probe_only=True)
+    assert print_.serial == "UCJS-10041"
+    # A PBP package: the SFO is what the header points at.
+    pbp = b"\0PBP" + b"\0" * 36 + sfo
+    assert fingerprint(GameSystem.PSP, [pbp], len(pbp), probe_only=True).serial == "UCJS-10041"
+
+
+def test_cso_with_zero_header_size_field_is_decoded() -> None:
+    import struct as _struct
+
+    image = b"\0" * 4000 + b"NPUX-80431|0123456789ABCDEF|0001|G" + b"\0" * 3000
+    cso = bytearray(make_cso(image))
+    _struct.pack_into("<I", cso, 4, 0)  # header_size = 0, as several tools write it
+    assert (
+        fingerprint(GameSystem.PSP, [bytes(cso)], len(cso), probe_only=True).serial == "NPUX-80431"
+    )
+
+
+def test_attribute_lists_supply_names_for_releases_missing_from_the_main_lists(
+    client: TestClient, settings: Settings, data_dir: Path
+) -> None:
+    image = b"\0" * 4000 + b"NPUX-80431|0123456789ABCDEF|0001|G" + b"\0" * 3000
+    (data_dir / "roms" / "psp").mkdir()
+    (data_dir / "roms" / "psp" / "SRHT.iso").write_bytes(image)
+    assert client.post("/api/games/scan").status_code == 200
+    game_id = client.get("/api/games?system=psp").json()["items"][0]["id"]
+    developer = (
+        'game (\n\tname "One Two Boat Racing (USA)"\n\tserial "NPUX-80431"\n\tdeveloper "Zallag"\n'
+        '\trom ( serial "NPUX-80431" name "One Two Boat Racing (USA).cue" )\n)\n'
+    )
+    install_identifier(
+        client,
+        settings,
+        game_database({"/metadat/developer/Sony - PlayStation Portable.dat": developer}),
+    )
+    game = client.post(f"/api/games/{game_id}/identify").json()
+    assert game["canonical_name"] == "One Two Boat Racing (USA)"
+    assert game["title"] == "One Two Boat Racing"  # a bare code title is replaced
+    assert game["developer"] == "Zallag"

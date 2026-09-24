@@ -86,8 +86,8 @@ ATTRIBUTE_FOLDERS = ("developer", "publisher", "releaseyear", "releasemonth")
 
 # Track data a cue sheet or playlist points at.
 _TRACK_EXTENSIONS = (".bin", ".img", ".iso")
-# A title that is only a short code with digits: "2728", "2005C19", "PSPCH001".
-_CATALOGUE_CODE = re.compile(r"^(?=.*\d)[A-Za-z0-9_-]{1,12}$")
+# A title that is only a short code without spaces: "2728", "2005C19", "SRHT", "cmplete-03".
+_CATALOGUE_CODE = re.compile(r"^[A-Za-z0-9_-]{1,12}$")
 _CJK = re.compile("[\u3400-\u9fff\uf900-\ufaff]")
 _KANA = re.compile("[\u3040-\u30ff]")
 
@@ -239,7 +239,14 @@ class GameIdentifier:
                 return held[1]
         stem, folders = source
         games: list[DatGame] = []
-        sources = [(folder, stem) for folder in folders] + list(EXTRA_DATS.get(system, ()))
+        # The attribute lists (developer, publisher, …) name releases the main
+        # lists lack (PSP Minis, for one) and carry their serials, so they join
+        # the index too; their attributes ride along on the Release.
+        sources = (
+            [(folder, stem) for folder in folders]
+            + list(EXTRA_DATS.get(system, ()))
+            + [(folder, stem) for folder in ATTRIBUTE_FOLDERS]
+        )
         for folder, dat_stem in sources:
             text = self._load(folder, dat_stem)
             if text:
