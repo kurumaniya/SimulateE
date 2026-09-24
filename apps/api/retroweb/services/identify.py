@@ -40,7 +40,13 @@ from retroweb.core.logging import get_logger
 from retroweb.library.artwork import closest_release, normalize_title
 from retroweb.library.datfile import DatGame, parse_dat
 from retroweb.library.metadata import FilenameMetadataProvider
-from retroweb.library.romid import DISC_SYSTEMS, FULL_HASH_LIMIT, Fingerprint, fingerprint
+from retroweb.library.romid import (
+    DISC_PROBE_BYTES,
+    DISC_SYSTEMS,
+    FULL_HASH_LIMIT,
+    Fingerprint,
+    fingerprint,
+)
 from retroweb.library.systems import CONTAINER_EXTENSIONS, GameSystem
 from retroweb.models import Game, GameFile
 from retroweb.services.jobs import Job
@@ -67,6 +73,11 @@ SYSTEM_DATS: dict[GameSystem, tuple[str, tuple[str, ...]]] = {
     GameSystem.PSP: ("Sony - PlayStation Portable", ("redump", "no-intro")),
     GameSystem.SATURN: ("Sega - Saturn", ("redump",)),
     GameSystem.ARCADE: ("FBNeo - Arcade Games", ("fbneo-split",)),
+}
+# Further name lists merged into a system's index: (folder, DAT stem). PSN
+# downloads (NPJH-…, NPUG-… serials) live in their own No-Intro list.
+EXTRA_DATS: dict[GameSystem, tuple[tuple[str, str], ...]] = {
+    GameSystem.PSP: (("no-intro", "Sony - PlayStation Portable (PSN)"),),
 }
 # Systems whose games are found by the ROM set's file name, not its content.
 SET_NAME_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.ARCADE})
@@ -228,8 +239,9 @@ class GameIdentifier:
                 return held[1]
         stem, folders = source
         games: list[DatGame] = []
-        for folder in folders:
-            text = self._load(folder, stem)
+        sources = [(folder, stem) for folder in folders] + list(EXTRA_DATS.get(system, ()))
+        for folder, dat_stem in sources:
+            text = self._load(folder, dat_stem)
             if text:
                 games.extend(parse_dat(text))
         built = SystemIndex(games)
@@ -317,9 +329,14 @@ def identify_game(
             print_ = Fingerprint(target.crc32, target.sha1, target.size_bytes, target.serial)
         elif storage.exists(target.storage_key):
             probe_only = system in DISC_SYSTEMS and target.size_bytes > FULL_HASH_LIMIT
-            print_ = fingerprint(
-                system, storage.stream(target.storage_key), target.size_bytes, probe_only=probe_only
+            # A bounded range, not an abandoned full stream: leaving a FUSE file half
+            # read and closing it early left the reader stuck in the kernel (2026-09-24).
+            chunks = (
+                storage.stream(target.storage_key, 0, DISC_PROBE_BYTES - 1)
+                if probe_only
+                else storage.stream(target.storage_key)
             )
+            print_ = fingerprint(system, chunks, target.size_bytes, probe_only=probe_only)
             if not probe_only:
                 target.crc32, target.sha1 = print_.crc32, print_.sha1
             target.serial = print_.serial

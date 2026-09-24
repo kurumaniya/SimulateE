@@ -402,3 +402,28 @@ def test_cso_images_are_probed_after_decompression() -> None:
     assert cso[:4] == b"CISO"
     print_ = fingerprint(GameSystem.PSP, [cso], len(cso), probe_only=True)
     assert print_.serial == "UCUS-98737"
+
+
+def test_extra_name_lists_are_merged_into_the_index(
+    client: TestClient, settings: Settings, data_dir: Path
+) -> None:
+    image = b"\0" * 4000 + b"NPJH-50654|0123456789ABCDEF|0001|G" + b"\0" * 3000
+    (data_dir / "roms" / "psp").mkdir()
+    (data_dir / "roms" / "psp" / "Some PSN Game.iso").write_bytes(image)
+    assert client.post("/api/games/scan").status_code == 200
+    game_id = client.get("/api/games?system=psp").json()["items"][0]["id"]
+    psn = (
+        'game (\n\tname "PSN Game (Japan)"\n\tregion "Japan"\n\tserial "NPJH-50654"\n'
+        '\trom ( name "PSN Game (Japan).iso" size 1 crc 00000001 md5 00 sha1 00'
+        ' serial "NPJH-50654" )\n)\n'
+    )
+    hits: list[str] = []
+    install_identifier(
+        client,
+        settings,
+        game_database({"/metadat/no-intro/Sony - PlayStation Portable (PSN).dat": psn}, hits),
+    )
+    game = client.post(f"/api/games/{game_id}/identify").json()
+    assert game["canonical_name"] == "PSN Game (Japan)"
+    assert game["identified_by"] == "serial"
+    assert "/metadat/redump/Sony - PlayStation Portable.dat" in hits
