@@ -361,3 +361,44 @@ def test_bare_catalogue_code_title_is_replaced_by_the_release_name(
     game = client.post(f"/api/games/{game_id}/identify").json()
     assert game["title"] == "Real Name"
     assert game["title_en"] == "Real Name"
+
+
+def test_probe_only_fingerprint_reads_the_head_and_skips_digests() -> None:
+    consumed: list[int] = []
+
+    def chunks():  # type: ignore[no-untyped-def]
+        payload = b"\0" * 9000 + b"ULUS-10041|0123456789ABCDEF|0001|G" + b"\0" * 50
+        for i in range(0, 64 * 1024 * 1024, 1024 * 1024):
+            consumed.append(i)
+            yield payload if i == 0 else b"\0" * (1024 * 1024)
+
+    print_ = fingerprint(GameSystem.PSP, chunks(), 64 * 1024 * 1024, probe_only=True)
+    assert print_.serial == "ULUS-10041"
+    assert print_.sha1 is None and print_.crc32 is None
+    assert len(consumed) <= 9  # stopped after the 8 MB probe, not the whole image
+
+
+def make_cso(image: bytes, block_size: int = 2048) -> bytes:
+    """A minimal CSO container: zlib raw-deflate blocks, one index entry per block."""
+    import struct
+    import zlib as _zlib
+
+    blocks = [image[i : i + block_size] for i in range(0, len(image), block_size)]
+    header = struct.pack("<4sIQIBBH", b"CISO", 24, len(image), block_size, 1, 0, 0)
+    index_size = 4 * (len(blocks) + 1)
+    data = b""
+    entries: list[int] = []
+    for block in blocks:
+        compressed = _zlib.compress(block, 9)[2:-4]  # raw deflate
+        entries.append(24 + index_size + len(data))
+        data += compressed
+    entries.append(24 + index_size + len(data))
+    return header + struct.pack(f"<{len(entries)}I", *entries) + data
+
+
+def test_cso_images_are_probed_after_decompression() -> None:
+    image = b"\0" * 4000 + b"UCUS-98737|0123456789ABCDEF|0001|G" + b"\0" * 3000
+    cso = make_cso(image)
+    assert cso[:4] == b"CISO"
+    print_ = fingerprint(GameSystem.PSP, [cso], len(cso), probe_only=True)
+    assert print_.serial == "UCUS-98737"

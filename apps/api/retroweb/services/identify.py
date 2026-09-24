@@ -40,7 +40,7 @@ from retroweb.core.logging import get_logger
 from retroweb.library.artwork import closest_release, normalize_title
 from retroweb.library.datfile import DatGame, parse_dat
 from retroweb.library.metadata import FilenameMetadataProvider
-from retroweb.library.romid import Fingerprint, fingerprint
+from retroweb.library.romid import DISC_SYSTEMS, FULL_HASH_LIMIT, Fingerprint, fingerprint
 from retroweb.library.systems import CONTAINER_EXTENSIONS, GameSystem
 from retroweb.models import Game, GameFile
 from retroweb.services.jobs import Job
@@ -139,8 +139,8 @@ class SystemIndex:
         self, print_: Fingerprint | None, filename: str
     ) -> tuple[Release, Literal["hash", "serial", "name"]] | None:
         if print_ is not None:
-            position = self.by_sha1.get(print_.sha1)
-            if position is None:
+            position = self.by_sha1.get(print_.sha1) if print_.sha1 else None
+            if position is None and print_.crc32:
                 position = self.by_crc.get(print_.crc32)
             if position is not None:
                 return self.releases[position], "hash"
@@ -316,8 +316,13 @@ def identify_game(
         if target.crc32 and target.sha1 and not force:
             print_ = Fingerprint(target.crc32, target.sha1, target.size_bytes, target.serial)
         elif storage.exists(target.storage_key):
-            print_ = fingerprint(system, storage.stream(target.storage_key), target.size_bytes)
-            target.crc32, target.sha1, target.serial = print_.crc32, print_.sha1, print_.serial
+            probe_only = system in DISC_SYSTEMS and target.size_bytes > FULL_HASH_LIMIT
+            print_ = fingerprint(
+                system, storage.stream(target.storage_key), target.size_bytes, probe_only=probe_only
+            )
+            if not probe_only:
+                target.crc32, target.sha1 = print_.crc32, print_.sha1
+            target.serial = print_.serial
 
     found = index.find(print_, primary.filename)
     if found is None:

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import struct
 import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -49,12 +50,16 @@ _CARTRIDGE_SERIAL_OFFSETS: dict[GameSystem, int] = {
     GameSystem.GBC: 0x13F,
 }
 DISC_SYSTEMS: frozenset[GameSystem] = frozenset({GameSystem.PS1, GameSystem.PSP, GameSystem.SATURN})
+# Disc images above this size are not hashed in full for identification: the
+# serial in the first megabytes names them, and a second full read of a 1 GB
+# image on network storage costs more than a digest match is worth.
+FULL_HASH_LIMIT = 256 * 1024 * 1024
 
 
 @dataclass(frozen=True)
 class Fingerprint:
-    crc32: str  # upper-case hex
-    sha1: str  # upper-case hex
+    crc32: str | None  # upper-case hex; None when only the head was probed
+    sha1: str | None  # upper-case hex; None when only the head was probed
     size: int  # bytes that were hashed (after header removal)
     serial: str | None
 
@@ -83,7 +88,42 @@ def _cartridge_serial(system: GameSystem, head: bytes) -> str | None:
     return code.decode("ascii") if _GAME_CODE.match(code) else None
 
 
+def _cso_head(head: bytes) -> bytes:
+    """The first sectors of a CSO/ZSO-compressed PSP image, decompressed.
+
+    Only the blocks whose compressed bytes lie inside ``head`` are decoded; the
+    UMD file system's UMD_DATA.BIN sits at the very start, which is all the
+    serial lookup needs.
+    """
+    if len(head) < 24 or head[:4] != b"CISO":
+        return head
+    _magic, header_size, total, block_size, _ver, align = struct.unpack_from("<4sIQIBB", head, 0)
+    if block_size == 0 or total == 0:
+        return head
+    count = min(total // block_size + 1, (len(head) - header_size) // 4)
+    entries = struct.unpack_from(f"<{count}I", head, header_size)
+    out = bytearray()
+    for index in range(count - 1):
+        start = (entries[index] & 0x7FFFFFFF) << align
+        end = (entries[index + 1] & 0x7FFFFFFF) << align
+        if end > len(head) or end <= start:
+            break
+        chunk = head[start:end]
+        if entries[index] & 0x80000000:
+            out += chunk  # stored as-is
+        else:
+            try:
+                out += zlib.decompress(chunk, wbits=-15)
+            except zlib.error:
+                break
+        if len(out) >= DISC_PROBE_BYTES:
+            break
+    return bytes(out)
+
+
 def _disc_serial(system: GameSystem, head: bytes) -> str | None:
+    if system is GameSystem.PSP:
+        head = _cso_head(head)
     if system is GameSystem.PS1:
         match = _PS1_BOOT.search(head)
         if match:
@@ -100,10 +140,25 @@ def _disc_serial(system: GameSystem, head: bytes) -> str | None:
     return None
 
 
-def fingerprint(system: GameSystem, chunks: Iterable[bytes], total_size: int) -> Fingerprint:
-    """Database-style CRC32 / SHA-1 and the embedded serial of one image."""
+def fingerprint(
+    system: GameSystem, chunks: Iterable[bytes], total_size: int, *, probe_only: bool = False
+) -> Fingerprint:
+    """Database-style CRC32 / SHA-1 and the embedded serial of one image.
+
+    With ``probe_only`` the digests are skipped and reading stops once the
+    serial probe is full, so a large disc image costs a few megabytes.
+    """
     is_disc = system in DISC_SYSTEMS
     probe_limit = DISC_PROBE_BYTES if is_disc else CARTRIDGE_PROBE_BYTES
+    if probe_only:
+        probe = bytearray()
+        for chunk in chunks:
+            probe.extend(chunk[: probe_limit - len(probe)])
+            if len(probe) >= probe_limit:
+                break
+        head = bytes(probe)
+        serial = _disc_serial(system, head) if is_disc else _cartridge_serial(system, head)
+        return Fingerprint(crc32=None, sha1=None, size=total_size, serial=serial)
 
     sha1 = hashlib.sha1(usedforsecurity=False)
     crc = 0
