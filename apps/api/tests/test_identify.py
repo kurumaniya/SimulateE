@@ -514,7 +514,11 @@ def test_known_digests_without_a_serial_get_the_head_probed_again(
         db.execute(update(GameFile).where(GameFile.game_id == game_id).values(serial=None))
         db.commit()
     assert client.get(f"/api/games/{game_id}").json()["files"][0]["sha1"] is not None
-    # A list appears later: a plain (non-force) pass must still find the serial.
+    # A list appears later (the earlier 404s are cached, so drop that cache):
+    # a plain (non-force) pass must still find the serial.
+    import shutil
+
+    shutil.rmtree(data_dir / "cache", ignore_errors=True)
     dat = 'game (\n\tname "Boat (USA)"\n\tserial "NPUX-80431"\n\trom ( serial "NPUX-80431" )\n)\n'
     install_identifier(
         client, settings, game_database({"/metadat/developer/Sony - PlayStation Portable.dat": dat})
