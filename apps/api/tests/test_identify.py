@@ -346,3 +346,18 @@ def test_identification_respects_the_online_switch(
         for path in (f"/api/games/{game_id}/identify", "/api/library/identify"):
             response = offline_client.post(path)
             assert response.json()["error"]["code"] == "feature_disabled", response.text
+
+
+def test_bare_catalogue_code_title_is_replaced_by_the_release_name(
+    client: TestClient, settings: Settings, data_dir: Path
+) -> None:
+    rom = make_gba_rom(b"code-named")
+    (data_dir / "roms" / "gba" / "2728.gba").write_bytes(rom)
+    assert client.post("/api/games/scan").status_code == 200
+    game_id = client.get("/api/games").json()["items"][0]["id"]
+    install_identifier(
+        client, settings, game_database({GBA_DAT: HEADER + dat_entry("Real Name (USA)", rom)})
+    )
+    game = client.post(f"/api/games/{game_id}/identify").json()
+    assert game["title"] == "Real Name"
+    assert game["title_en"] == "Real Name"

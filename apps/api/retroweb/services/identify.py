@@ -75,6 +75,8 @@ ATTRIBUTE_FOLDERS = ("developer", "publisher", "releaseyear", "releasemonth")
 
 # Track data a cue sheet or playlist points at.
 _TRACK_EXTENSIONS = (".bin", ".img", ".iso")
+# A title that is only a short code with digits: "2728", "2005C19", "PSPCH001".
+_CATALOGUE_CODE = re.compile(r"^(?=.*\d)[A-Za-z0-9_-]{1,12}$")
 _CJK = re.compile("[\u3400-\u9fff\uf900-\ufaff]")
 _KANA = re.compile("[\u3040-\u30ff]")
 
@@ -328,8 +330,10 @@ def identify_game(
     game.identified_by = how
     parsed = FilenameMetadataProvider().from_filename(release.name + primary.extension, system)
     if parsed is not None:
-        if system in SET_NAME_SYSTEMS and game.title == primary.filename.rsplit(".", 1)[0]:
-            # The scanner could only title the game after its set ("sf2").
+        stem = primary.filename.rsplit(".", 1)[0]
+        if (system in SET_NAME_SYSTEMS and game.title == stem) or _CATALOGUE_CODE.match(game.title):
+            # The file name gave no real title: an arcade set name ("sf2") or a
+            # bare catalogue code ("2728", "2005C19"). Use the release name.
             game.title = parsed.title
         if not game.title_en:
             game.title_en = parsed.title

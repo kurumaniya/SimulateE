@@ -26,3 +26,14 @@ def test_numeric_cjk_title_without_index_is_kept() -> None:
     meta = parse("428 被封锁的浩谷 V1.1 [简].iso")
     assert meta is not None
     assert meta.title == "428 被封锁的浩谷 V1.1"
+
+
+def test_catalogue_number_before_a_latin_title_with_collection_tags_is_dropped() -> None:
+    meta = parse("1480 - Clannad (UMD Disc 1) [简] [GC汉化组].iso")
+    assert meta is not None
+    assert meta.title == "Clannad"
+    assert meta.label == "UMD Disc 1, 简, GC汉化组"
+    # Without any tag or CJK the number is assumed to be part of the title.
+    assert (
+        parse("2010 - The Graphic Action Game (USA).col").title == "2010 - The Graphic Action Game"
+    )  # type: ignore[union-attr]
