@@ -11,6 +11,9 @@ def build_storage(settings: Settings) -> StorageProvider:
     mounts: dict[str, StorageProvider] = {
         name: LocalStorageProvider(Path(path)) for name, path in settings.storage_roots().items()
     }
+    for folder, path in settings.rom_mount_roots().items():
+        # A per-system folder on another disk or a NAS mount (see ROM_MOUNTS).
+        mounts[f"roms/{folder}"] = LocalStorageProvider(path)
     return MountedStorage(mounts)
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -45,6 +46,7 @@ class ScannedFile:
     sha256: str
     detection: Detection
     metadata: GameMetadata
+    modified_at: datetime | None = None
     role: str = FILE_ROLE_PRIMARY
     # Storage key of the container file (.cue / .m3u) this companion belongs to.
     parent_key: str | None = None
@@ -123,6 +125,7 @@ class GameScanner:
                 sha256=sha256,
                 detection=parent_detection,
                 metadata=GameMetadata(title=split_extension(filename)[0]),
+                modified_at=obj.modified_at,
                 role=FILE_ROLE_COMPANION,
                 parent_key=parent_key,
             )
@@ -138,6 +141,7 @@ class GameScanner:
             sha256=sha256,
             detection=detection,
             metadata=metadata,
+            modified_at=obj.modified_at,
         )
 
     def find_companions(self, objects: list[StorageObject]) -> tuple[dict[str, str], set[str]]:
@@ -200,8 +204,18 @@ class GameScanner:
 
         objects = list(self.storage.list(prefix))
         companions, referenced = self.find_companions(objects)
+        known = self._known_files(session, prefix)
         scanned_files: list[ScannedFile] = []
         for index, obj in enumerate(objects, start=1):
+            if self._unchanged(obj, known):
+                # Same key, size and mtime as when it was last hashed: keep the
+                # row as it is. Reading a large image again on every rescan is
+                # what makes a NAS-backed library unusable.
+                seen_keys.add(obj.key)
+                result.skipped += 1
+                if progress:
+                    progress(index, len(objects))
+                continue
             try:
                 scanned = self.inspect(obj, companions)
             except Exception as exc:  # noqa: BLE001 - keep scanning other files
@@ -227,6 +241,28 @@ class GameScanner:
         session.commit()
         log.info("rom.scan.finished", **result.as_dict())
         return result
+
+    @staticmethod
+    def _known_files(session: Session, prefix: str) -> dict[str, tuple[int, datetime | None]]:
+        """Storage key → (size, mtime) of every present file already in the library."""
+        rows = session.execute(
+            select(GameFile.storage_key, GameFile.size_bytes, GameFile.file_modified_at).where(
+                GameFile.storage_key.startswith(prefix + "/"), GameFile.missing.is_(False)
+            )
+        )
+        return {key: (size, modified_at) for key, size, modified_at in rows}
+
+    @staticmethod
+    def _unchanged(obj: StorageObject, known: dict[str, tuple[int, datetime | None]]) -> bool:
+        entry = known.get(obj.key)
+        if entry is None:
+            return False
+        size, modified_at = entry
+        if modified_at is None:
+            return False
+        return size == obj.size and modified_at.replace(microsecond=0) == obj.modified_at.replace(
+            microsecond=0
+        )
 
     def scan_single(self, session: Session, key: str) -> GameFile:
         """Scan one freshly uploaded file and return its GameFile."""
@@ -277,6 +313,8 @@ class GameScanner:
             if existing.missing:
                 existing.missing = False
                 changed = True
+            if existing.file_modified_at != scanned.modified_at:
+                existing.file_modified_at = scanned.modified_at
             if changed:
                 result.updated += 1
                 log.info("rom.scan.updated", key=scanned.key, game_id=existing.game_id)
@@ -289,6 +327,7 @@ class GameScanner:
             # Same path, different content: treat as a replaced file.
             by_key.sha256 = scanned.sha256
             by_key.size_bytes = scanned.size
+            by_key.file_modified_at = scanned.modified_at
             by_key.missing = False
             result.updated += 1
             log.info("rom.scan.replaced", key=scanned.key, game_id=by_key.game_id)
@@ -307,6 +346,7 @@ class GameScanner:
                 extension=scanned.extension,
                 size_bytes=scanned.size,
                 sha256=scanned.sha256,
+                file_modified_at=scanned.modified_at,
                 is_primary=False,
                 role=FILE_ROLE_COMPANION,
             )
@@ -344,6 +384,7 @@ class GameScanner:
             extension=scanned.extension,
             size_bytes=scanned.size,
             sha256=scanned.sha256,
+            file_modified_at=scanned.modified_at,
             region=scanned.metadata.region,
             label=scanned.metadata.label,
             is_primary=True,

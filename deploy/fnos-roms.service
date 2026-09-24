@@ -1,0 +1,24 @@
+[Unit]
+Description=fnOS NAS 'roms' share mounted read-only at ~/mnt/fnos-roms (rclone SMB, FUSE)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+# rclone remote "fnos" is defined in ~/.config/rclone/rclone.conf by deploy/nas-mount-setup.sh
+ExecStart=%h/.local/bin/rclone mount fnos:roms %h/mnt/fnos-roms \
+    --read-only \
+    --vfs-cache-mode off \
+    --buffer-size 64M \
+    --vfs-read-chunk-size 32M \
+    --dir-cache-time 2m \
+    --attr-timeout 1m \
+    --poll-interval 0 \
+    --umask 022 \
+    --log-level NOTICE
+ExecStop=/usr/bin/fusermount3 -uz %h/mnt/fnos-roms
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

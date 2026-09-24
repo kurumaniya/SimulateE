@@ -54,9 +54,20 @@ data/
 
 The sub-directories can be relocated individually with `ROM_PATH`, `SAVE_PATH`,
 `STATE_PATH`, `BIOS_PATH`, `COVER_PATH`, `SCREENSHOT_PATH`. Internally each
-becomes a *mount* in `MountedStorage`, which routes a key by its first path
-segment to the right provider; this is also how an S3 bucket could hold ROMs
-while saves stay local.
+becomes a *mount* in `MountedStorage`, which routes a key to the mount with the
+longest matching prefix; this is also how an S3 bucket could hold ROMs while
+saves stay local.
+
+Mounts nest. `ROM_MOUNTS=psp=/home/koy/mnt/fnos-roms/psp` puts the `psp`
+system folder on a NAS mount while every other system stays under `ROM_PATH`
+(`roms/psp/...` keys route to the nested mount; listing `roms` merges both and
+hides whatever the nested mount shadows). Several entries are separated by
+`;`. A read-only mount is fine for ROMs: uploads go to `ROM_PATH`, and the
+scanner only reads.
+
+Rescans do not re-read files whose key, size and mtime match the row from the
+last scan (`game_files.file_modified_at`), so a library of large disc images on
+network storage is hashed once; new or changed files are hashed as before.
 
 ## Security rules
 

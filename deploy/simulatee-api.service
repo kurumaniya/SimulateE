@@ -1,6 +1,7 @@
 [Unit]
 Description=SimulateE (RetroWeb) API - uvicorn on 127.0.0.1:8010
-After=network.target
+After=network.target fnos-roms.service
+Wants=fnos-roms.service
 
 [Service]
 WorkingDirectory=%h/simulatee/apps/api

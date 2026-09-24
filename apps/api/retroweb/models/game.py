@@ -86,6 +86,10 @@ class GameFile(IdMixin, Base):
         String(16), default=FILE_ROLE_PRIMARY, server_default=FILE_ROLE_PRIMARY, nullable=False
     )
     missing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # mtime of the file when it was last hashed. A rescan that finds the same
+    # size and mtime at the same key trusts the stored digest instead of
+    # reading the file again (matters for large images on network storage).
+    file_modified_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     game: Mapped[Game] = relationship(back_populates="files")

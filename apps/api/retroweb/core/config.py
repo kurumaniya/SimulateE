@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     bios_path: Path | None = None
     cover_path: Path | None = None
     screenshot_path: Path | None = None
+    # Per-system ROM folders that live elsewhere (a NAS mount, another disk):
+    # "psp=/mnt/nas/roms/psp;n64=/mnt/nas/roms/n64". Each entry replaces
+    # <ROM_PATH>/<folder>; everything else stays under ROM_PATH.
+    rom_mounts: str = ""
 
     secret_key: str = "change-me"
     # True: one implicit account, no login. False: accounts and sessions
@@ -130,6 +134,21 @@ class Settings(BaseSettings):
 
     def resolved_data_path(self) -> Path:
         return self.data_path.resolve()
+
+    def rom_mount_roots(self) -> dict[str, Path]:
+        """System folder → directory for the entries of ``ROM_MOUNTS``."""
+        roots: dict[str, Path] = {}
+        for entry in self.rom_mounts.split(";"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            folder, sep, location = entry.partition("=")
+            folder = folder.strip().strip("/").lower()
+            if not sep or not folder or "/" in folder or not location.strip():
+                raise ValueError(f"ROM_MOUNTS entry must look like 'psp=/path': {entry!r}")
+            path = Path(location.strip())
+            roots[folder] = path.resolve() if path.is_absolute() else (_base_dir() / path).resolve()
+        return roots
 
     def storage_roots(self) -> dict[str, Path]:
         """Mount name → directory. Each mount is a top-level storage key prefix."""
