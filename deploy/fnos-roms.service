@@ -1,12 +1,12 @@
 [Unit]
-Description=fnOS NAS 'roms' share mounted read-only at ~/mnt/fnos-roms (rclone SMB, FUSE)
+Description=fnOS NAS roms share (rclone alias remote fnosroms) mounted read-only at ~/mnt/fnos-roms
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=notify
-# rclone remote "fnos" is defined in ~/.config/rclone/rclone.conf by deploy/nas-mount-setup.sh
-ExecStart=%h/.local/bin/rclone mount fnos:roms %h/mnt/fnos-roms \
+# remotes "fnos" (smb) and "fnosroms" (alias to the share) are written to ~/.config/rclone/rclone.conf by deploy/nas-mount-setup.sh
+ExecStart=%h/.local/bin/rclone mount fnosroms: %h/mnt/fnos-roms \
     --read-only \
     --vfs-cache-mode off \
     --buffer-size 64M \
